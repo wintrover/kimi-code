@@ -218,6 +218,8 @@ export const KimiConfigSchema = z.object({
   extraSkillDirs: z.array(z.string()).optional(),
   loopControl: LoopControlSchema.optional(),
   background: BackgroundConfigSchema.optional(),
+  defaultSwarmMode: z.boolean().optional(),
+  subagentModel: z.string().optional(),
   experimental: ExperimentalConfigSchema.optional(),
   telemetry: z.boolean().optional(),
   raw: z.record(z.string(), z.unknown()).optional(),
@@ -257,6 +259,8 @@ export const KimiConfigPatchSchema = z
     extraSkillDirs: z.array(z.string()).optional(),
     loopControl: LoopControlPatchSchema.optional(),
     background: BackgroundConfigPatchSchema.optional(),
+    defaultSwarmMode: z.boolean().optional(),
+    subagentModel: z.string().optional(),
     experimental: ExperimentalConfigPatchSchema.optional(),
     telemetry: z.boolean().optional(),
   })
