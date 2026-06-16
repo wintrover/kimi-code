@@ -20,6 +20,14 @@ export const FLAG_DEFINITIONS = [
     default: true,
     surface: 'core',
   },
+  {
+    id: 'formal_guard',
+    title: 'Formal guard',
+    description: 'Mathematical invariant-based subagent loop prevention via ranking functions and SMT verification.',
+    env: 'KIMI_CODE_EXPERIMENTAL_FORMAL_GUARD',
+    default: false,
+    surface: 'core',
+  },
 ] as const satisfies readonly FlagDefinitionInput[];
 
 /** Literal union of registered flag ids. */
