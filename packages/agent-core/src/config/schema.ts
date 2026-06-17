@@ -104,6 +104,16 @@ export const BackgroundConfigSchema = z.object({
 
 export type BackgroundConfig = z.infer<typeof BackgroundConfigSchema>;
 
+export const GuardrailConfigSchema = z.object({
+  enabled: z.boolean().default(true),
+  maxRepeats: z.number().int().min(1).default(3),
+  windowSize: z.number().int().min(1).default(5),
+  requireReviewBetweenToolBatches: z.boolean().default(false),
+  requireDeclaredToolUse: z.boolean().default(false),
+});
+
+export type GuardrailConfig = z.infer<typeof GuardrailConfigSchema>;
+
 export const ExperimentalConfigSchema = z.record(z.string(), z.boolean());
 
 export type ExperimentalConfig = z.infer<typeof ExperimentalConfigSchema>;
@@ -220,6 +230,7 @@ export const KimiConfigSchema = z.object({
   background: BackgroundConfigSchema.optional(),
   defaultSwarmMode: z.boolean().optional(),
   subagentModel: z.string().optional(),
+  executionGuardrails: GuardrailConfigSchema.optional(),
   experimental: ExperimentalConfigSchema.optional(),
   telemetry: z.boolean().optional(),
   raw: z.record(z.string(), z.unknown()).optional(),
@@ -233,6 +244,7 @@ const ThinkingConfigPatchSchema = ThinkingConfigSchema.partial();
 const PermissionConfigPatchSchema = PermissionConfigSchema.partial();
 const LoopControlPatchSchema = LoopControlSchema.partial();
 const BackgroundConfigPatchSchema = BackgroundConfigSchema.partial();
+const GuardrailConfigPatchSchema = GuardrailConfigSchema.partial();
 const ExperimentalConfigPatchSchema = ExperimentalConfigSchema;
 const MoonshotServiceConfigPatchSchema = MoonshotServiceConfigSchema.partial();
 const ServicesConfigPatchSchema = z.object({
@@ -261,6 +273,7 @@ export const KimiConfigPatchSchema = z
     background: BackgroundConfigPatchSchema.optional(),
     defaultSwarmMode: z.boolean().optional(),
     subagentModel: z.string().optional(),
+    executionGuardrails: GuardrailConfigPatchSchema.optional(),
     experimental: ExperimentalConfigPatchSchema.optional(),
     telemetry: z.boolean().optional(),
   })

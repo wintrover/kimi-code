@@ -1083,7 +1083,11 @@ function providerConfigForAlias(provider: ProviderConfig): KimiConfig['providers
 }
 
 function capabilityNames(capabilities: ModelCapability | undefined): string[] {
-  if (capabilities === undefined) return [];
+  if (capabilities === undefined) {
+    // The mock provider is a stand-in for a capable coding assistant. Default
+    // to tool_use so tests that configure tools do not need to repeat this.
+    return ['tool_use'];
+  }
   return [
     capabilities.image_in ? 'image_in' : undefined,
     capabilities.video_in ? 'video_in' : undefined,

@@ -144,7 +144,7 @@ function packageDirForFile(file) {
   const parts = path.relative(dtsRoot, file).split(path.sep);
   const [packageDir, firstDir] = parts;
 
-  if (packageDir === undefined || firstDir !== 'src' || !packageDirs.has(packageDir)) {
+  if (packageDir === undefined || firstDir === undefined || !packageDirs.has(packageDir)) {
     return undefined;
   }
 

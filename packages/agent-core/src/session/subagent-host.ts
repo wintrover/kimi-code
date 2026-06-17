@@ -229,6 +229,12 @@ export class SessionSubagentHost {
       systemPrompt: parent.config.systemPrompt,
     });
     child.tools.copyLoopToolsFrom(parent.tools);
+    const childCaps = child.config.data().modelCapabilities;
+    if (!childCaps.tool_use) {
+      parent.log.warn('BTW subagent model lacks tool_use; guardrail pipeline will expose no tools', {
+        modelAlias: child.config.modelAlias,
+      });
+    }
     child.context.useProjectedHistoryFrom(parent.context);
     child.context.appendSystemReminder(SIDE_QUESTION_SYSTEM_REMINDER.trim(), {
       kind: 'system_trigger',
@@ -371,6 +377,13 @@ export class SessionSubagentHost {
     );
     child.useProfile(profile, context);
     child.tools.inheritUserTools(parent.tools);
+
+    const childCaps = child.config.data().modelCapabilities;
+    if (!childCaps.tool_use) {
+      parent.log.warn('subagent model lacks tool_use; guardrail pipeline will expose no tools', {
+        modelAlias: child.config.modelAlias,
+      });
+    }
   }
 
   private async triggerSubagentStart(

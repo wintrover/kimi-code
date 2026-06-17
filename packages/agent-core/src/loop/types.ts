@@ -222,6 +222,14 @@ export type ShouldContinueAfterStopHook = (
   ctx: LoopStoppedStepContext,
 ) => Promise<ShouldContinueAfterStopResult | undefined>;
 
+export interface LoopBeforeToolBatchContext extends LoopStepHookContext {
+  readonly toolCalls: readonly ToolCall[];
+}
+
+export type BeforeToolBatchHook = (
+  ctx: LoopBeforeToolBatchContext,
+) => Promise<void>;
+
 /**
  * Groups every awaited phase hook.
  *
@@ -235,6 +243,7 @@ export type ShouldContinueAfterStopHook = (
 export interface LoopHooks {
   beforeStep?: BeforeStepHook | undefined;
   afterStep?: AfterStepHook | undefined;
+  beforeToolBatch?: BeforeToolBatchHook | undefined;
   prepareToolExecution?: PrepareToolExecutionHook | undefined;
   authorizeToolExecution?: AuthorizeToolExecutionHook | undefined;
   finalizeToolResult?: FinalizeToolResultHook | undefined;

@@ -26,13 +26,14 @@ import {
 import { isAbortError, isMaxStepsExceededError } from '../../loop/errors';
 import {
   createLoopEventDispatcher,
-  runTurn,
   type ExecutableToolResult,
   type LoopEvent,
   type LoopRecordedEvent,
   type LoopTurnInterruptedEvent,
   type LoopTurnStopReason,
 } from '../../loop/index';
+import { createGuardedRunTurn } from '../../guardrail/run-turn';
+import type { GuardrailConfig } from '../../guardrail/context.js';
 import type { AgentEvent, TurnEndedEvent } from '../../rpc';
 import type { TelemetryPropertyValue } from '../../telemetry';
 import { abortable, isUserCancellation, userCancellationReason } from '../../utils/abort';
@@ -40,7 +41,6 @@ import { USER_PROMPT_ORIGIN, type PromptOrigin } from '../context';
 import { renderUserPromptHookBlockResult, renderUserPromptHookResult } from '../../session/hooks';
 import { canonicalTelemetryArgs, isPlainRecord } from './canonical-args';
 import { ToolCallDeduplicator } from './tool-dedup';
-import { GuardStateTracker, StateVerifier } from '#/guard';
 
 interface ActiveTurn {
   readonly turnId: number;
@@ -577,16 +577,6 @@ export class TurnFlow {
     let goalOutcomeMessageContinuationUsed = false;
     const deduper = new ToolCallDeduplicator({ telemetry: this.agent.telemetry });
 
-    // Formal guard — mathematical invariant-based loop prevention.
-    // Gated behind KIMI_CODE_EXPERIMENTAL_FORMAL_GUARD flag.
-    const formalGuardEnabled = this.agent.experimentalFlags.enabled('formal_guard');
-    let guardTracker: GuardStateTracker | undefined;
-    if (formalGuardEnabled) {
-      const verifier = new StateVerifier();
-      await verifier.init();
-      guardTracker = new GuardStateTracker(verifier);
-    }
-
     await this.agent.mcp?.waitForInitialLoad(signal);
     // Surface the active goal at the start of the turn (append-only; no-op when
     // there is no active goal). Each goal continuation is its own turn, so this
@@ -597,14 +587,22 @@ export class TurnFlow {
       const model = this.agent.config.model;
       const loopControl = this.agent.kimiConfig?.loopControl;
       let stopForGoalBudget = false;
+      const guardrailConfig: GuardrailConfig = {
+        enabled: true,
+        maxRepeats: 3,
+        windowSize: 5,
+        requireReviewBetweenToolBatches: false,
+        requireDeclaredToolUse: false,
+        ...this.agent.kimiConfig?.executionGuardrails,
+      };
+      const runTurnFn = createGuardedRunTurn(this.agent, guardrailConfig);
       try {
-        const result = await runTurn({
+        const result = await runTurnFn({
           turnId: String(turnId),
           signal,
           llm: this.agent.llm,
           buildMessages: () => this.agent.context.messages,
           dispatchEvent: this.buildDispatchEvent(turnId),
-          tools: this.agent.tools.loopTools,
           log: this.agent.log,
           maxSteps: loopControl?.maxStepsPerTurn,
           maxRetryAttempts: loopControl?.maxRetriesPerStep,
@@ -712,30 +710,6 @@ export class TurnFlow {
                   toolOutput: isError === true ? undefined : toolOutputText(output).slice(0, 2000),
                 },
               });
-
-              // Formal guard — check if this tool call violates mathematical invariants.
-              if (guardTracker) {
-                const guardResult = await guardTracker.recordToolCall(
-                  ctx.toolCall.name,
-                  typeof ctx.args === 'string' ? ctx.args : JSON.stringify(ctx.args),
-                  toolOutputText(output),
-                );
-                if (!guardResult.accepted) {
-                  this.agent.log.warn('formal guard blocked transition', {
-                    tool: ctx.toolCall.name,
-                    reason: guardResult.reason,
-                  });
-                  // Inject a system message telling the LLM its transition was rejected.
-                  this.agent.context.appendUserMessage(
-                    [{ type: 'text', text:
-                      `[Formal Guard] Your last action was rejected because it violated a mathematical invariant: ${guardResult.reason}. ` +
-                      'You must take a DIFFERENT action that makes measurable progress toward the goal. ' +
-                      'Repeating the same or similar actions is not allowed.',
-                    }],
-                    { kind: 'system_trigger', name: 'formal_guard_rejection' },
-                  );
-                }
-              }
 
               return finalResult;
             },

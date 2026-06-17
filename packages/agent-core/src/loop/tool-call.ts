@@ -124,6 +124,17 @@ export async function runToolCallBatch(
   response: LLMChatResponse,
 ): Promise<ToolCallBatchResult> {
   if (response.toolCalls.length === 0) return { stopTurn: false };
+
+  if (step.hooks?.beforeToolBatch !== undefined) {
+    await step.hooks.beforeToolBatch({
+      turnId: step.turnId,
+      stepNumber: step.currentStep,
+      signal: step.signal,
+      llm: step.llm,
+      toolCalls: response.toolCalls,
+    });
+  }
+
   const batchStep: ToolCallBatchContext = { ...step, toolCalls: response.toolCalls };
   const calls = response.toolCalls.map((toolCall) => preflightToolCall(step.tools, toolCall));
   const scheduler = new ToolScheduler<PendingToolResult>();
