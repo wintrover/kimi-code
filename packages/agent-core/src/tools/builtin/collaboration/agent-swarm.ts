@@ -203,7 +203,7 @@ export class AgentSwarmTool implements BuiltinTool<AgentSwarmToolInput> {
 
           // Store isolation result for post-swarm merge
           if (isolationResult) {
-            (args as Record<string, unknown>).__isolationResult = isolationResult;
+            (args as Record<string, unknown>)['__isolationResult'] = isolationResult;
           }
         } catch (err) {
           // Partitioner failed — fall through to normal swarm
@@ -214,7 +214,7 @@ export class AgentSwarmTool implements BuiltinTool<AgentSwarmToolInput> {
       const result = await this.runSwarm(args, context.signal, context.toolCallId);
 
       // --- Post-swarm merge (deterministic rebase order) ---
-      const isolationResult = (args as Record<string, unknown>).__isolationResult as
+      const isolationResult = (args as Record<string, unknown>)['__isolationResult'] as
         | import('../../../partitioner/workspace-isolation.js').WorkspaceIsolationResult
         | undefined;
       if (isolationResult) {

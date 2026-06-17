@@ -135,10 +135,10 @@ export class ContractGate {
   private async doInit(): Promise<void> {
     try {
       // Attempt to load z3-solver WASM binding.
-      // @ts-expect-error z3-solver is an optional peer dependency
+      // z3-solver is now a direct dependency
       const z3Module = await import('z3-solver');
       const init = z3Module.init;
-      this.z3 = (await init()) as Z3Context;
+      this.z3 = (await init()) as unknown as Z3Context;
       this.solver = this.z3.solver();
 
       // Add base invariants as Z3 assertions.
