@@ -440,6 +440,82 @@ export interface ToolResultEvent {
   readonly synthetic?: boolean;
 }
 
+// === Immutable Execution Journal ===
+
+/** Single tool invocation snapshot — immutable after execution */
+export interface ToolInvocationSnapshot {
+  readonly toolName: string;
+  /** Normalized JSON, max 200 chars */
+  readonly argsSnapshot: string;
+  readonly status: 'success' | 'failed';
+  readonly durationMs: number;
+}
+
+/** Subagent execution journal — black-box trace */
+export interface SubagentExecutionJournal {
+  readonly turnsCompleted: number;
+  readonly toolsExecuted: readonly ToolInvocationSnapshot[];
+  readonly metrics: {
+    readonly inputOther: number;
+    readonly output: number;
+    readonly inputCacheRead: number;
+    readonly inputCacheCreation: number;
+  };
+}
+
+// === Failure Reason ADT (Sum Type) ===
+
+export type SubagentFailureReason =
+  | {
+      readonly code: 'CIRCUIT_BREAKER_TRIPPED';
+      readonly policy: string;
+      readonly toolName: string;
+      readonly repeatCount: number;
+      readonly maxRepeats: number;
+      readonly argsHash?: string;
+    }
+  | {
+      readonly code: 'TIMEOUT';
+      readonly provider: string;
+      readonly originalMessage: string;
+    }
+  | { readonly code: 'MAX_TOKENS_EXCEEDED'; readonly reason: string }
+  | { readonly code: 'USER_INTERRUPTED' }
+  | {
+      readonly code: 'API_RATE_LIMIT';
+      readonly provider: string;
+      readonly statusCode: number;
+    }
+  | {
+      readonly code: 'CONNECTION_ERROR';
+      readonly provider: string;
+      readonly originalMessage: string;
+    }
+  | {
+      readonly code: 'UNEXPECTED_CRASH';
+      readonly message: string;
+      readonly stack?: string;
+    };
+
+// === Atomic State Capsule ===
+
+export type SubagentExecutionCapsule =
+  | {
+      readonly status: 'COMPLETED';
+      readonly journal: SubagentExecutionJournal;
+      readonly output: string;
+    }
+  | {
+      readonly status: 'FAILED';
+      readonly journal: SubagentExecutionJournal;
+      readonly error: SubagentFailureReason;
+    }
+  | {
+      readonly status: 'ABORTED';
+      readonly journal: SubagentExecutionJournal;
+      readonly abortReason: 'cancelled' | 'suspended';
+    };
+
 export interface SubagentSpawnedEvent {
   readonly type: 'subagent.spawned';
   readonly subagentId: string;
@@ -469,12 +545,14 @@ export interface SubagentCompletedEvent {
   readonly resultSummary: string;
   readonly usage?: TokenUsage;
   readonly contextTokens?: number;
+  readonly capsule?: SubagentExecutionCapsule;
 }
 
 export interface SubagentFailedEvent {
   readonly type: 'subagent.failed';
   readonly subagentId: string;
   readonly error: string;
+  readonly capsule?: SubagentExecutionCapsule;
 }
 
 export interface CompactionStartedEvent {

@@ -471,6 +471,7 @@ export class SubAgentEventHandler {
       contextTokens: event.contextTokens,
       usage: event.usage,
       resultSummary: event.resultSummary,
+      capsule: event.capsule,
     });
     this.host.streamingUI.removeToolComponentIfInactive(parentToolCallId);
   }
@@ -489,7 +490,7 @@ export class SubAgentEventHandler {
 
     const tc = this.host.streamingUI.getToolComponent(parentToolCallId);
     if (tc === undefined) return;
-    tc.onSubagentFailed({ error: event.error });
+    tc.onSubagentFailed({ error: event.error, capsule: event.capsule });
     this.host.streamingUI.removeToolComponentIfInactive(parentToolCallId);
   }
 

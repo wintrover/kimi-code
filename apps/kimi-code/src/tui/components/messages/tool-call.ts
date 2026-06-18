@@ -991,6 +991,7 @@ export class ToolCallComponent extends Container {
     contextTokens?: number | undefined;
     usage?: TokenUsage | undefined;
     resultSummary: string;
+    capsule?: import('@moonshot-ai/protocol').SubagentExecutionCapsule;
   }): void {
     this.subagentPhase = 'done';
     this.subagentEndedAtMs ??= Date.now();
@@ -1028,7 +1029,7 @@ export class ToolCallComponent extends Container {
   }
 
   /** Handles SDK `subagent.failed`. */
-  onSubagentFailed(payload: { error: string }): void {
+  onSubagentFailed(payload: { error: string; capsule?: import('@moonshot-ai/protocol').SubagentExecutionCapsule }): void {
     this.subagentPhase = 'failed';
     this.subagentEndedAtMs ??= Date.now();
     this.subagentError = payload.error;

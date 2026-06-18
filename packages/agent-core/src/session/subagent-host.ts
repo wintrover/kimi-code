@@ -27,6 +27,9 @@ import {
   prepareSystemPromptContext,
   type ResolvedAgentProfile,
 } from '../profile';
+import { classifySubagentError } from './subagent-error-mapper';
+import { buildExecutionJournal } from './subagent-journal';
+import type { SubagentExecutionCapsule, SubagentExecutionJournal } from '@moonshot-ai/protocol';
 import {
   linkAbortSignal,
   userCancellationReason,
@@ -108,7 +111,14 @@ type SubagentCompletion = {
   readonly result: string;
   readonly usage?: TokenUsage;
   readonly artifact?: ArtifactRecord;
+  readonly capsule: SubagentExecutionCapsule;
 };
+
+const EMPTY_METRICS = { inputOther: 0, output: 0, inputCacheRead: 0, inputCacheCreation: 0 } as const;
+
+function fallbackJournal(turnsCompleted: number): SubagentExecutionJournal {
+  return { turnsCompleted, toolsExecuted: [], metrics: EMPTY_METRICS };
+}
 
 export class MissingArtifactError extends Error {
   constructor(message: string) {
@@ -213,7 +223,10 @@ export class SessionSubagentHost {
         });
         return await this.runPromptTurn(parent, id, agent, profile.name, runOptions);
       } catch (error) {
-        this.emitSubagentFailed(parent, id, runOptions, error);
+        const journal = safeBuildJournal(agent, 0);
+        const reason = classifySubagentError(error);
+        const capsule: SubagentExecutionCapsule = { status: 'FAILED', journal, error: reason };
+        this.emitSubagentFailed(parent, id, runOptions, error, capsule);
         throw error;
       }
     });
@@ -234,7 +247,10 @@ export class SessionSubagentHost {
         child.config.update({ modelAlias: this.resolveSubagentModel(parent) });
         return await this.runPromptTurn(parent, agentId, child, profileName, runOptions);
       } catch (error) {
-        this.emitSubagentFailed(parent, agentId, runOptions, error);
+        const journal = safeBuildJournal(child, 0);
+        const reason = classifySubagentError(error);
+        const capsule: SubagentExecutionCapsule = { status: 'FAILED', journal, error: reason };
+        this.emitSubagentFailed(parent, agentId, runOptions, error, capsule);
         throw error;
       }
     });
@@ -256,7 +272,10 @@ export class SessionSubagentHost {
         this.observeFirstRequest(child, runOptions);
         return await this.waitForChildCompletion(parent, agentId, child, profileName, runOptions);
       } catch (error) {
-        this.emitSubagentFailed(parent, agentId, runOptions, error);
+        const journal = safeBuildJournal(child, 0);
+        const reason = classifySubagentError(error);
+        const capsule: SubagentExecutionCapsule = { status: 'FAILED', journal, error: reason };
+        this.emitSubagentFailed(parent, agentId, runOptions, error, capsule);
         throw error;
       }
     });
@@ -449,15 +468,18 @@ export class SessionSubagentHost {
       result = lastAssistantText(child);
     }
     const usage = child.usage.data().total;
+    const journal = safeBuildJournal(child, 0);
+    const capsule: SubagentExecutionCapsule = { status: 'COMPLETED', journal, output: result };
     parent.emitEvent({
       type: 'subagent.completed',
       subagentId: childId,
       resultSummary: result,
       usage,
       contextTokens: child.context.tokenCount,
+      capsule,
     });
     this.triggerSubagentStop(parent, profileName, result);
-    return { result, usage };
+    return { result, usage, capsule };
   }
 
   private async waitForArtifactCompletion(
@@ -486,7 +508,9 @@ export class SessionSubagentHost {
         contextTokens: child.context.tokenCount,
       });
       this.triggerSubagentStop(parent, profileName, result);
-      return { result, usage, artifact: committed };
+      const journal = safeBuildJournal(child, 0);
+      const capsule: SubagentExecutionCapsule = { status: 'COMPLETED', journal, output: result };
+      return { result, usage, artifact: committed, capsule };
     }
 
     // 0) Hard-coded guard against re-entrant recovery.
@@ -602,7 +626,9 @@ export class SessionSubagentHost {
         contextTokens: synth.context.tokenCount,
       });
       this.triggerSubagentStop(parent, profileName, result);
-      return { result, usage: synth.usage.data().total, artifact: final };
+      const journal = safeBuildJournal(synth, 0);
+      const capsule: SubagentExecutionCapsule = { status: 'COMPLETED', journal, output: result };
+      return { result, usage: synth.usage.data().total, artifact: final, capsule };
     } catch (synthesisError) {
       parent.telemetry.track('subagent.synthesis_recovery.failed', {
         original_subagent_id: childId,
@@ -742,13 +768,24 @@ export class SessionSubagentHost {
     childId: string,
     options: RunSubagentOptions,
     error: unknown,
+    capsule: SubagentExecutionCapsule,
   ): void {
     if (shouldSuppressQueuedAttemptFailureEvent(options, error)) return;
     parent.emitEvent({
       type: 'subagent.failed',
       subagentId: childId,
       error: error instanceof Error ? error.message : String(error),
+      capsule,
     });
+  }
+}
+
+/** Journal 조립 실패 시에도 원본 에러 보존을 위한 안전 래퍼 */
+function safeBuildJournal(child: Agent, turnsCompleted: number): SubagentExecutionJournal {
+  try {
+    return buildExecutionJournal(child, turnsCompleted);
+  } catch {
+    return fallbackJournal(turnsCompleted);
   }
 }
 

@@ -2,6 +2,7 @@ import { isProviderRateLimitError, type TokenUsage } from '@moonshot-ai/kosong';
 import * as retry from 'retry';
 
 import type { ArtifactRecord } from '../agent/artifact';
+import type { SubagentExecutionCapsule } from '@moonshot-ai/protocol';
 import type {
   RunSubagentOptions,
   SpawnSubagentOptions,
@@ -77,6 +78,7 @@ export type SubagentResult<T = unknown> = {
   readonly result?: string;
   readonly usage?: TokenUsage;
   readonly error?: string;
+  readonly capsule?: SubagentExecutionCapsule;
   readonly artifact?: ArtifactRecord;
 };
 

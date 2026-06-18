@@ -17,13 +17,32 @@ function parseArgs(raw: string | null): unknown {
   }
 }
 
+/** Normalize non-deterministic noise before hashing. */
+function normalizeOutput(raw: string): string {
+  return raw
+    // ISO timestamps
+    .replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z?/g, '<TS>')
+    // UUIDs (must run before Unix timestamps to avoid partial digit matching)
+    .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '<UUID>')
+    // Unix timestamps (10-13 digits)
+    .replace(/\b\d{10,13}\b/g, '<TS>')
+    // Bracketed numbers like [1234] (PID-style log output)
+    .replace(/\[\d+\]/g, '[<N>]')
+    // pid=1234 or pid: 1234
+    .replace(/\bpid[=:\s]+\d+/gi, 'pid=<N>')
+    // (ID: 12345) patterns
+    .replace(/\(ID:\s*\d+\)/gi, '(ID:<N>)')
+    // Normalize whitespace
+    .replace(/\s+/g, ' ').trim();
+}
+
 function hashObservation(result: ExecutableToolResult): string {
   const output = typeof result.output === 'string'
     ? result.output
     : result.output
         .map((part) => (part.type === 'text' ? part.text : stableStringify(part)))
         .join('\n');
-  return createHash('sha256').update(output).digest('hex');
+  return createHash('sha256').update(normalizeOutput(output)).digest('hex');
 }
 
 function makeViolation(
@@ -73,6 +92,16 @@ function recordActions(ctx: GuardrailContext): GuardrailContext {
   return ctx;
 }
 
+/** Commands that mutate the environment when successful. */
+const BASH_MUTATION_PATTERN = /\b(rm|mv|mkdir|rmdir|chmod|chown|ln|unlink|git\s+(push|commit|merge|rebase|reset|checkout|clean)|npm\s+install|pip\s+install|cargo\s+(install|build|test)|docker\s+(run|build|rm|stop)|wget|curl\s+(-X|--request)\s+(POST|PUT|DELETE|PATCH))\b/i;
+
+function isDestructiveCommand(toolName: string, parsedArgs: unknown): boolean {
+  if (toolName !== 'Bash' || parsedArgs === null || typeof parsedArgs !== 'object') return false;
+  const cmd = (parsedArgs as Record<string, unknown>)['command'];
+  if (typeof cmd !== 'string') return false;
+  return BASH_MUTATION_PATTERN.test(cmd);
+}
+
 function checkActionObservationPhase(
   ctx: GuardrailContext,
 ): GuardrailContext {
@@ -84,10 +113,15 @@ function checkActionObservationPhase(
     const result = toolResults[i];
     if (result === undefined) continue;
 
+    const parsedArgs = parseArgs(toolCall.arguments);
+
+    // Smart Destructive Check: invalidate prior fingerprints when a mutation command succeeds
+    if (isDestructiveCommand(toolCall.name, parsedArgs) && !result.isError) {
+      ctx.telemetry.invalidateFingerprints(toolCall.name);
+    }
+
     const outputHash = hashObservation(result);
     ctx.telemetry.recordObservation(toolCall.id, outputHash);
-
-    const parsedArgs = parseArgs(toolCall.arguments);
     const matches = ctx.telemetry.recentMatches(
       toolCall.name,
       parsedArgs,

@@ -103,4 +103,12 @@ export class TurnTelemetryBuffer implements ToolTelemetryBuffer {
     }
     return count;
   }
+
+  invalidateFingerprints(toolName: string): void {
+    for (let i = this.buffer.length - 1; i >= 0; i -= 1) {
+      if (this.buffer[i]!.name === toolName) {
+        this.buffer.splice(i, 1);
+      }
+    }
+  }
 }

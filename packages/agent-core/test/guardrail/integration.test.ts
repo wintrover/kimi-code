@@ -23,6 +23,10 @@ describe('guardrail integration', () => {
     const ctx = testAgent({
       kaos: createCommandKaos('noop'),
       telemetry: recordingTelemetry(records),
+      initialConfig: {
+        providers: {},
+        executionGuardrails: { detectionMode: 'input-only' },
+      } as never,
     });
     ctx.configure({ tools: ['Bash'] });
     await ctx.rpc.setPermission({ mode: 'yolo' });

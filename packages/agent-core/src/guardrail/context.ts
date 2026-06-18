@@ -49,6 +49,8 @@ export interface ToolTelemetryBuffer {
    * Attach an observation hash to a previously recorded pending action.
    */
   recordObservation(toolCallId: string, outputHash: string): void;
+  /** Remove all fingerprints matching the given tool name from the buffer. */
+  invalidateFingerprints(toolName: string): void;
   /**
    * Count how many of the most recent `window` records match the given tool
    * name and normalized arguments. If `outputHash` is provided, only records

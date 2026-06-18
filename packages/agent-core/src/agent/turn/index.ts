@@ -593,6 +593,7 @@ export class TurnFlow {
         windowSize: 5,
         requireReviewBetweenToolBatches: false,
         requireDeclaredToolUse: false,
+        detectionMode: 'action-observation',
         ...this.agent.kimiConfig?.executionGuardrails,
       };
       const runTurnFn = createGuardedRunTurn(this.agent, guardrailConfig);
