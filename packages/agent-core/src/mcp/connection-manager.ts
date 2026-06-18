@@ -381,7 +381,7 @@ export class McpConnectionManager {
     return mcpTools.map((mcpTool) => ({
       name: mcpTool.name,
       description: mcpTool.description,
-      parameters: assertMcpInputSchema(mcpTool.name, mcpTool.inputSchema),
+      parameters: normalizeMcpInputSchema(assertMcpInputSchema(mcpTool.name, mcpTool.inputSchema)),
       annotations: mcpTool.annotations,
     })) as (Tool & { annotations?: MCPToolAnnotations })[];
   }
@@ -452,6 +452,48 @@ function computeEnabledNames(config: McpServerConfig, tools: readonly Tool[]): S
     allowed.add(name);
   }
   return allowed;
+}
+
+/**
+ * Normalize MCP tool input schemas for Ajv compatibility.
+ * Recursively converts `anyOf: [{type: X}, {type: "null"}]` patterns
+ * to `{type: X, nullable: true}`, preserving the null-accepting contract.
+ */
+export function normalizeMcpInputSchema(schema: Record<string, unknown>): Record<string, unknown> {
+  const clone = structuredClone(schema);
+  convertAnyOfToNullable(clone);
+  return clone;
+}
+
+function convertAnyOfToNullable(node: unknown): void {
+  if (!node || typeof node !== 'object') return;
+
+  if (Array.isArray(node)) {
+    for (const item of node) convertAnyOfToNullable(item);
+    return;
+  }
+
+  const obj = node as Record<string, unknown>;
+
+  if (Array.isArray(obj['anyOf']) && obj['anyOf'].length === 2) {
+    const branches = obj['anyOf'] as Record<string, unknown>[];
+    const nullIdx = branches.findIndex((b) => b['type'] === 'null');
+    if (nullIdx !== -1) {
+      const nonNullIdx = nullIdx === 0 ? 1 : 0;
+      const nonNull = branches[nonNullIdx];
+      if (nonNull && typeof nonNull['type'] === 'string') {
+        Object.assign(obj, nonNull);
+        obj['nullable'] = true;
+        delete obj['anyOf'];
+      }
+    }
+  }
+
+  for (const key in obj) {
+    if (typeof obj[key] === 'object') {
+      convertAnyOfToNullable(obj[key]);
+    }
+  }
 }
 
 function isUnauthorizedLikeError(error: unknown): boolean {

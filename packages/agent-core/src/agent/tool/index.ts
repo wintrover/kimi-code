@@ -448,6 +448,8 @@ export class ToolManager {
           ),
         this.agent.subagentHost &&
           new b.AgentSwarmTool(this.agent.subagentHost, this.agent.swarmMode),
+        this.agent.subagentHost &&
+          new b.EnterSwarmModeTool(this.agent),
         this.agent.type === 'sub' && new b.YieldArtifactTool(this.agent),
         toolServices?.webSearcher && new b.WebSearchTool(toolServices.webSearcher),
         toolServices?.urlFetcher && new b.FetchURLTool(toolServices.urlFetcher),
@@ -474,12 +476,15 @@ export class ToolManager {
     const mcpNames = [...this.mcpTools.keys()].filter((name) => this.isMcpToolEnabled(name));
     // Mutation goal tools are only offered to the model while a goal exists.
     const hideGoalMutationTools = this.agent.goal.getGoal().goal === null;
+    // AgentSwarm is only visible after the LLM calls EnterSwarmMode.
+    const hideSwarmTools = !this.agent.swarmToolEnabled;
     return uniq([...this.enabledTools, ...mcpNames])
       .toSorted((a, b) => a.localeCompare(b))
       .filter(
         (name) =>
           !(hideGoalMutationTools && (name === 'SetGoalBudget' || name === 'UpdateGoal')),
       )
+      .filter(name => !(hideSwarmTools && name === 'AgentSwarm'))
       .map((name) => this.resolverChain.resolve(name, this.resolverContext))
       .filter((tool) => !!tool);
   }

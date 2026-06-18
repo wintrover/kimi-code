@@ -132,6 +132,7 @@ export class Agent {
   readonly cron: CronManager | null;
   readonly goal: GoalMode;
   readonly replayBuilder: ReplayBuilder;
+  private _swarmToolEnabled = false;
   /** Artifact ledger and FSM for subagents running in artifact output mode. */
   artifacts?: {
     readonly ledger: AgentLedger;
@@ -198,6 +199,14 @@ export class Agent {
 
   setKaos(kaos: Kaos) {
     this._kaos = kaos;
+  }
+
+  get swarmToolEnabled(): boolean {
+    return this._swarmToolEnabled;
+  }
+
+  setSwarmToolEnabled(enabled: boolean): void {
+    this._swarmToolEnabled = enabled;
   }
 
   get generate(): typeof generate {

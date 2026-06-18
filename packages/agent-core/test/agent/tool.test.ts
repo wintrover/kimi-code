@@ -252,7 +252,20 @@ describe('Agent tools', () => {
     expect(managedBash!.description).toContain('run_in_background=true');
   });
 
-  it('exposes AgentSwarm when a subagent host is available', () => {
+  it('exposes AgentSwarm when a subagent host is available and swarm tool is enabled', () => {
+    const subagentHost = {} as unknown as SessionSubagentHost;
+
+    const ctx = testAgent({
+      subagentHost,
+      experimentalFlags: new FlagResolver({}, FLAG_DEFINITIONS),
+    });
+    ctx.configure({ tools: ['AgentSwarm'] });
+    ctx.agent.setSwarmToolEnabled(true);
+
+    expect(ctx.agent.tools.loopTools.some((tool) => tool.name === 'AgentSwarm')).toBe(true);
+  });
+
+  it('hides AgentSwarm when swarm tool is not enabled', () => {
     const subagentHost = {} as unknown as SessionSubagentHost;
 
     const ctx = testAgent({
@@ -261,7 +274,7 @@ describe('Agent tools', () => {
     });
     ctx.configure({ tools: ['AgentSwarm'] });
 
-    expect(ctx.agent.tools.loopTools.some((tool) => tool.name === 'AgentSwarm')).toBe(true);
+    expect(ctx.agent.tools.loopTools.some((tool) => tool.name === 'AgentSwarm')).toBe(false);
   });
 
   it('routes registered user tools through tool.call request/response', async () => {

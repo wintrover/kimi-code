@@ -22,7 +22,11 @@ import { z } from 'zod';
 
 import { KimiError } from '../../src/errors';
 import { ProviderManager } from '../../src/session/provider-manager';
-import { McpConnectionManager, type McpServerEntry } from '../../src/mcp/connection-manager';
+import {
+  McpConnectionManager,
+  normalizeMcpInputSchema,
+  type McpServerEntry,
+} from '../../src/mcp/connection-manager';
 import { JsonFileStore, McpOAuthService } from '../../src/mcp/oauth';
 import type { AgentEvent, SDKSessionRPC } from '../../src/rpc';
 import { Session } from '../../src/session';
@@ -919,6 +923,107 @@ describe('Session MCP startup', () => {
       await rm(tmp, { recursive: true, force: true, maxRetries: 3, retryDelay: 10 });
     }
   }, 10_000);
+});
+
+describe('normalizeMcpInputSchema', () => {
+  it('converts anyOf with integer and null to nullable integer', () => {
+    const schema = {
+      type: 'object',
+      properties: {
+        max_results: {
+          anyOf: [{ type: 'integer' }, { type: 'null' }],
+          default: 10,
+          title: 'Max Results',
+        },
+      },
+    };
+    const result = normalizeMcpInputSchema(schema);
+    expect(result.properties.max_results).toEqual({
+      type: 'integer',
+      default: 10,
+      title: 'Max Results',
+      nullable: true,
+    });
+    expect(result.properties.max_results).not.toHaveProperty('anyOf');
+  });
+
+  it('converts anyOf with string and null to nullable string', () => {
+    const schema = {
+      type: 'object',
+      properties: {
+        file_pattern: {
+          anyOf: [{ type: 'string' }, { type: 'null' }],
+        },
+      },
+    };
+    const result = normalizeMcpInputSchema(schema);
+    expect(result.properties.file_pattern).toEqual({
+      type: 'string',
+      nullable: true,
+    });
+  });
+
+  it('preserves anyOf with 3+ branches (not a simple nullable pattern)', () => {
+    const schema = {
+      anyOf: [{ type: 'integer' }, { type: 'string' }, { type: 'null' }],
+    };
+    const result = normalizeMcpInputSchema(schema);
+    expect(result).toHaveProperty('anyOf');
+    expect(result.anyOf).toHaveLength(3);
+  });
+
+  it('handles schemas without anyOf unchanged', () => {
+    const schema = {
+      type: 'object',
+      properties: {
+        pattern: { type: 'string' },
+      },
+    };
+    const result = normalizeMcpInputSchema(schema);
+    expect(result).toEqual(schema);
+  });
+
+  it('handles deeply nested anyOf in properties', () => {
+    const schema = {
+      type: 'object',
+      properties: {
+        config: {
+          type: 'object',
+          properties: {
+            timeout: {
+              anyOf: [{ type: 'integer' }, { type: 'null' }],
+            },
+          },
+        },
+      },
+    };
+    const result = normalizeMcpInputSchema(schema);
+    expect(result.properties.config.properties.timeout).toEqual({
+      type: 'integer',
+      nullable: true,
+    });
+  });
+
+  it('does not mutate the original schema', () => {
+    const schema = {
+      properties: {
+        max_results: {
+          anyOf: [{ type: 'integer' }, { type: 'null' }],
+        },
+      },
+    };
+    const original = structuredClone(schema);
+    normalizeMcpInputSchema(schema);
+    expect(schema).toEqual(original);
+  });
+
+  it('handles anyOf where null is first branch', () => {
+    const schema = {
+      anyOf: [{ type: 'null' }, { type: 'string' }],
+    };
+    const result = normalizeMcpInputSchema(schema);
+    expect(result).toEqual({ type: 'string', nullable: true });
+  });
 });
 
 function testProviderManager(): ProviderManager {

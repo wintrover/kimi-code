@@ -115,6 +115,26 @@ describe('ReadTool', () => {
     ).toBe(true);
   });
 
+  it('accepts offset as an alias for line_offset', () => {
+    // The schema should accept offset as an alias
+    expect(ReadInputSchema.safeParse({ path: '/tmp/test.txt', offset: 50 }).success).toBe(true);
+    // offset + line_offset together should also pass (line_offset takes precedence via normalizer)
+    expect(
+      ReadInputSchema.safeParse({ path: '/tmp/test.txt', line_offset: 10, offset: 50 }).success,
+    ).toBe(true);
+  });
+
+  it('normalizes offset alias to line_offset in parsed output', () => {
+    const result = ReadInputSchema.safeParse({ path: '/tmp/test.txt', offset: 42 });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      // After normalization, offset should be mapped to line_offset
+      expect(result.data.line_offset).toBe(42);
+      // The alias key should be removed
+      expect(result.data).not.toHaveProperty('offset');
+    }
+  });
+
   it('matches permission args with glob path semantics', () => {
     const tool = toolWithContent('');
     const execution = tool.resolveExecution({ path: '/etc/passwd' });

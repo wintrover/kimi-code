@@ -337,6 +337,7 @@ describe('Agent turn flow', () => {
       subagentHost,
     });
     ctx.configure({ tools: ['AgentSwarm'] });
+    ctx.agent.setSwarmToolEnabled(true);
     await ctx.rpc.setPermission({ mode: 'yolo' });
 
     ctx.mockNextResponse(

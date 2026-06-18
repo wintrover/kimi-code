@@ -70,6 +70,14 @@ function formatValidationError(error: ErrorObject): string {
     return `must NOT have additional property '${String(error.params['additionalProperty'])}'`;
   }
 
+  // The anyOf parent error is redundant when branch sub-errors are present
+  // in the error array, so we keep the message short and let the sub-errors
+  // (already formatted with their own instancePath prefixes) explain the
+  // actual failure.
+  if (error.keyword === 'anyOf') {
+    return 'must match a schema in anyOf';
+  }
+
   const path = error.instancePath ? `${error.instancePath} ` : '';
   return `${path}${error.message ?? 'is invalid'}`;
 }

@@ -12,11 +12,13 @@ function buildInputShape(shape: z.ZodRawShape, aliases: Aliases): z.ZodRawShape 
   for (const [key, fieldSchema] of Object.entries(shape)) {
     extended[key] = (fieldSchema as z.ZodTypeAny).optional();
   }
-  for (const aliasNames of Object.values(aliases)) {
+  for (const [canonical, aliasNames] of Object.entries(aliases)) {
     for (const alias of aliasNames) {
       if (!(alias in extended)) {
-        extended[alias] = z
-          .string()
+        // Use the same type as the canonical field so the output-side
+        // validation passes when a raw value is copied through the normalizer.
+        const canonicalSchema = shape[canonical] as z.ZodTypeAny | undefined;
+        extended[alias] = (canonicalSchema ?? z.unknown())
           .optional()
           .describe('Alias — normalized to the canonical parameter at runtime.');
       }

@@ -7,6 +7,7 @@ export * from '../cron/cron-list';
 export * from './collaboration/agent';
 export * from './collaboration/agent-swarm';
 export * from './collaboration/ask-user';
+export * from './collaboration/enter-swarm-mode';
 export * from './collaboration/skill-tool';
 export * from './collaboration/workload-partitioner-tool';
 export * from './collaboration/yield-artifact';
