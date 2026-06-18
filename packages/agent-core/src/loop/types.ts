@@ -230,6 +230,15 @@ export type BeforeToolBatchHook = (
   ctx: LoopBeforeToolBatchContext,
 ) => Promise<void>;
 
+export interface LoopAfterToolBatchContext extends LoopStepHookContext {
+  readonly toolCalls: readonly ToolCall[];
+  readonly results: readonly ExecutableToolResult[];
+}
+
+export type AfterToolBatchHook = (
+  ctx: LoopAfterToolBatchContext,
+) => Promise<void>;
+
 /**
  * Groups every awaited phase hook.
  *
@@ -244,6 +253,7 @@ export interface LoopHooks {
   beforeStep?: BeforeStepHook | undefined;
   afterStep?: AfterStepHook | undefined;
   beforeToolBatch?: BeforeToolBatchHook | undefined;
+  afterToolBatch?: AfterToolBatchHook | undefined;
   prepareToolExecution?: PrepareToolExecutionHook | undefined;
   authorizeToolExecution?: AuthorizeToolExecutionHook | undefined;
   finalizeToolResult?: FinalizeToolResultHook | undefined;

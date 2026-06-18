@@ -44,7 +44,7 @@ function makeContext(
     modelCapabilities: makeCapabilities(false),
     tools: [{ name: 'Bash' } as ExecutableTool],
     state: 'PLANNING',
-    telemetry: { records: [], record: () => {}, recentMatches: () => 0 },
+    telemetry: { records: [], record: () => {}, recordObservation: () => {}, recentMatches: () => 0 },
     config: fullConfig,
   };
 }

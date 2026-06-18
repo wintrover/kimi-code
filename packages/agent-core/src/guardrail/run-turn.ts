@@ -71,6 +71,16 @@ export function createGuardedRunTurn(
           await pipeline.execute({ ...ctx, toolCalls: batchCtx.toolCalls });
           await baseHooks?.beforeToolBatch?.(batchCtx);
         },
+        afterToolBatch: async (batchCtx) => {
+          if (guardrailConfig.detectionMode === 'action-observation') {
+            await pipeline.execute({
+              ...ctx,
+              toolCalls: batchCtx.toolCalls,
+              toolResults: batchCtx.results,
+            });
+          }
+          await baseHooks?.afterToolBatch?.(batchCtx);
+        },
         afterStep: async (stepCtx) => {
           if (useFsm) {
             const event: TurnEvent = {

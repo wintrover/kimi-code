@@ -47,10 +47,15 @@ export function canonicalizeArgs(name: string, args: unknown): unknown {
   return JSON.parse(stableStringify(args)) as unknown;
 }
 
-export function makeFingerprint(name: string, args: unknown): ToolCallFingerprint {
+export function makeFingerprint(
+  name: string,
+  args: unknown,
+  toolCallId?: string,
+): ToolCallFingerprint {
   return {
     name,
     normalizedArgs: canonicalizeArgs(name, args),
+    ...(toolCallId !== undefined ? { toolCallId } : {}),
     timestamp: Date.now(),
   };
 }
@@ -65,14 +70,24 @@ export class TurnTelemetryBuffer implements ToolTelemetryBuffer {
     return this.buffer;
   }
 
-  record(name: string, args: unknown): void {
-    this.buffer.push(makeFingerprint(name, args));
+  record(name: string, args: unknown, toolCallId?: string): void {
+    this.buffer.push(makeFingerprint(name, args, toolCallId));
     if (this.buffer.length > this.capacity) {
       this.buffer.shift();
     }
   }
 
-  recentMatches(name: string, args: unknown, window: number): number {
+  recordObservation(toolCallId: string, outputHash: string): void {
+    for (let i = this.buffer.length - 1; i >= 0; i -= 1) {
+      const record = this.buffer[i]!;
+      if (record.toolCallId === toolCallId && record.outputHash === undefined) {
+        this.buffer[i] = { ...record, outputHash };
+        return;
+      }
+    }
+  }
+
+  recentMatches(name: string, args: unknown, window: number, outputHash?: string): number {
     const target = canonicalizeArgs(name, args);
     const targetKey = stableStringify({ name, args: target });
     const start = Math.max(0, this.buffer.length - window);
@@ -80,9 +95,11 @@ export class TurnTelemetryBuffer implements ToolTelemetryBuffer {
     for (let i = this.buffer.length - 1; i >= start; i -= 1) {
       const record = this.buffer[i]!;
       const recordKey = stableStringify({ name: record.name, args: record.normalizedArgs });
-      if (recordKey === targetKey) {
-        count += 1;
+      if (recordKey !== targetKey) continue;
+      if (outputHash !== undefined) {
+        if (record.outputHash !== outputHash) continue;
       }
+      count += 1;
     }
     return count;
   }

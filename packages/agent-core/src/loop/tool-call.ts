@@ -160,8 +160,10 @@ export async function runToolCallBatch(
     // Tool tasks may finish out of order; terminal results are still emitted in
     // provider order. Await all tasks so each recorded `tool.call` gets a
     // paired `tool.result`; the caller checks abort before writing `step.end`.
+    const finalizedResults: PendingToolResult[] = [];
     for (const pendingResult of pendingResults) {
       const result = await finalizePendingToolResult(batchStep, await pendingResult);
+      finalizedResults.push(result);
       if (result.stopTurn === true) stopTurn = true;
       await step.dispatchEvent({
         type: 'tool.result',
@@ -170,6 +172,15 @@ export async function runToolCallBatch(
         result: result.result,
       });
     }
+
+    await step.hooks?.afterToolBatch?.({
+      turnId: step.turnId,
+      stepNumber: step.currentStep,
+      signal: step.signal,
+      llm: step.llm,
+      toolCalls: response.toolCalls,
+      results: finalizedResults.map((r) => r.result),
+    });
   } finally {
     // Preparation or result dispatch can throw after execution has started.
     // Always settle spawned tasks before the caller continues so rejected

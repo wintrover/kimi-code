@@ -110,6 +110,7 @@ export const GuardrailConfigSchema = z.object({
   windowSize: z.number().int().min(1).default(5),
   requireReviewBetweenToolBatches: z.boolean().default(false),
   requireDeclaredToolUse: z.boolean().default(false),
+  detectionMode: z.enum(['input-only', 'action-observation']).optional(),
 });
 
 export type GuardrailConfig = z.infer<typeof GuardrailConfigSchema>;

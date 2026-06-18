@@ -51,6 +51,12 @@ reserved_context_size = 50000
 max_running_tasks = 4
 keep_alive_on_exit = false
 
+[execution_guardrails]
+enabled = true
+max_repeats = 3
+window_size = 5
+detection_mode = "input-only"
+
 [experimental]
 micro_compaction = true
 
@@ -87,6 +93,7 @@ timeout = 5
 | `thinking` | `table` | — | Thinking 模式默认参数 → [`thinking`](#thinking) |
 | `loop_control` | `table` | — | Agent 循环控制参数 → [`loop_control`](#loop_control) |
 | `background` | `table` | — | 后台任务运行参数 → [`background`](#background) |
+| `execution_guardrails` | `table` | — | 熔断器参数 → [`execution_guardrails`](#execution_guardrails) |
 | `experimental` | `table` | — | 实验功能覆盖 → [`experimental`](#experimental) |
 | `services` | `table` | — | 内置外部服务配置 → [`services`](#services) |
 | `permission` | `table` | — | 初始权限规则 → [`permission`](#permission) |
@@ -172,6 +179,19 @@ max_context_size = 1047576
 | `keep_alive_on_exit` | `boolean` | `false` | 会话关闭时是否保留仍在运行的后台任务。默认情况下，Kimi Code 会在进程退出前请求停止所有后台任务；只有希望任务在会话结束后继续运行时才设为 `true` |
 
 `keep_alive_on_exit` 可被环境变量 `KIMI_CODE_BACKGROUND_KEEP_ALIVE_ON_EXIT` 覆盖，优先级高于配置文件。
+
+## `execution_guardrails`
+
+`execution_guardrails` 配置单轮内检测重复工具调用的熔断器（circuit breaker），用于捕获 Agent 反复执行同一命令却无法推进的无限循环。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `enabled` | `boolean` | `true` | 是否启用熔断器 |
+| `max_repeats` | `integer` | `3` | 窗口内允许出现的相同模式次数，超过则中断当前轮次 |
+| `window_size` | `integer` | `5` | 检查的最近工具调用数量 |
+| `detection_mode` | `string` | `"input-only"` | `"input-only"` 在重复输入时触发；`"action-observation"` 仅在相同输入产生相同输出时才触发 |
+
+在 `"input-only"` 模式下，最近 5 次工具调用里 `git status` 出现 3 次就会触发熔断。在 `"action-observation"` 模式下，只要每次输出不同就不会触发；只有当命令和输出都完全一致时，才说明 Agent 没有获得任何新信息，此时才判定为循环。
 
 ## `experimental`
 

@@ -7,7 +7,7 @@
 import { inputTotal } from '@moonshot-ai/kosong';
 import { describe, expect, it, vi } from 'vitest';
 
-import type { LoopHooks, ExecutableToolResult, ToolExecution } from '../../src/loop/index';
+import type { LoopHooks, ExecutableToolResult, ToolExecution, LoopAfterToolBatchContext } from '../../src/loop/index';
 import { PathSecurityError } from '../../src/tools/policies/path-access';
 import { makeEndTurnResponse, makeToolCall, makeToolUseResponse } from './fixtures/fake-llm';
 import { runTurn, runTurnExpectingThrow } from './fixtures/helpers';
@@ -482,6 +482,55 @@ describe('runTurn — finalizeToolResult hook', () => {
     expect(finalizeToolResultCalls).toBe(1);
     expect(context.toolResults()[0]?.result.output).toContain('finalized:');
     expect(sink.byType('tool.result')[0]?.result.output).toContain('finalized:');
+  });
+});
+
+describe('runTurn — afterToolBatch hook', () => {
+  it('runs after all tool results are dispatched', async () => {
+    const echo = new EchoTool();
+    const captured: Array<{
+      toolNames: string[];
+      outputs: string[];
+      stepNumber: number;
+    }> = [];
+    const hooks: LoopHooks = {
+      afterToolBatch: async (ctx: LoopAfterToolBatchContext) => {
+        captured.push({
+          toolNames: ctx.toolCalls.map((tc) => tc.name),
+          outputs: ctx.results.map((r) => (typeof r.output === 'string' ? r.output : '')),
+          stepNumber: ctx.stepNumber,
+        });
+      },
+    };
+    const { sink } = await runTurn({
+      hooks,
+      tools: [echo],
+      responses: [
+        makeToolUseResponse([
+          makeToolCall('echo', { text: 'a' }, 'tc-a'),
+          makeToolCall('echo', { text: 'b' }, 'tc-b'),
+        ]),
+        makeEndTurnResponse('done'),
+      ],
+    });
+    expect(captured).toEqual([
+      {
+        toolNames: ['echo', 'echo'],
+        outputs: ['a', 'b'],
+        stepNumber: 1,
+      },
+    ]);
+    expect(sink.count('tool.result')).toBe(2);
+  });
+
+  it('does not run when the model produces no tool calls', async () => {
+    const afterToolBatch = vi.fn(async () => {});
+    const hooks: LoopHooks = { afterToolBatch };
+    await runTurn({
+      hooks,
+      responses: [makeEndTurnResponse('ok')],
+    });
+    expect(afterToolBatch).not.toHaveBeenCalled();
   });
 });
 

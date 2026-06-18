@@ -51,6 +51,12 @@ reserved_context_size = 50000
 max_running_tasks = 4
 keep_alive_on_exit = false
 
+[execution_guardrails]
+enabled = true
+max_repeats = 3
+window_size = 5
+detection_mode = "input-only"
+
 [experimental]
 micro_compaction = true
 
@@ -87,6 +93,7 @@ Fields in the config file fall into two categories: **top-level scalars** that d
 | `thinking` | `table` | — | Default parameters for Thinking mode → [`thinking`](#thinking) |
 | `loop_control` | `table` | — | Agent loop control parameters → [`loop_control`](#loop_control) |
 | `background` | `table` | — | Background task runtime parameters → [`background`](#background) |
+| `execution_guardrails` | `table` | — | Circuit-breaker parameters → [`execution_guardrails`](#execution_guardrails) |
 | `experimental` | `table` | — | Experimental feature overrides → [`experimental`](#experimental) |
 | `services` | `table` | — | Built-in external service configuration → [`services`](#services) |
 | `permission` | `table` | — | Initial permission rules → [`permission`](#permission) |
@@ -172,6 +179,19 @@ You can also switch models temporarily without touching the config file — by s
 | `keep_alive_on_exit` | `boolean` | `false` | Whether to keep still-running background tasks when the session closes. By default, Kimi Code requests that all background tasks stop before the process exits; set this to `true` only when you want tasks to outlive the session |
 
 `keep_alive_on_exit` can be overridden by the `KIMI_CODE_BACKGROUND_KEEP_ALIVE_ON_EXIT` environment variable, which takes higher priority than `config.toml`.
+
+## `execution_guardrails`
+
+`execution_guardrails` configures the circuit breaker that detects repeated tool calls within a single turn. It is designed to catch infinite loops where the agent issues the same command over and over without making progress.
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `enabled` | `boolean` | `true` | Whether the circuit breaker is active |
+| `max_repeats` | `integer` | `3` | How many identical patterns are allowed within the window before the turn is halted |
+| `window_size` | `integer` | `5` | Number of recent tool calls inspected |
+| `detection_mode` | `string` | `"input-only"` | `"input-only"` trips on repeated identical tool inputs; `"action-observation"` trips only when identical inputs also produce identical outputs |
+
+In `"input-only"` mode, running `git status` three times in the last five tool calls triggers the breaker. In `"action-observation"` mode, the same command is allowed as long as its output changes each time; it trips only when both the command and its output are identical, which means the agent received no new information.
 
 ## `experimental`
 
