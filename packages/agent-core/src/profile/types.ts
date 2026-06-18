@@ -5,6 +5,7 @@ import type { SkillRegistry } from '../skill';
 
 export const RawSubagentProfileSchema = z.object({
   description: z.string().optional(),
+  outputSchema: z.record(z.string(), z.unknown()).optional(),
 });
 
 export type RawSubagentProfile = z.infer<typeof RawSubagentProfileSchema>;
@@ -20,6 +21,7 @@ export const RawAgentProfileSchema = z.object({
   // (`mcp__*`, `mcp__github__*`) that gate which MCP tools the profile sees.
   tools: z.array(z.string()).optional(),
   whenToUse: z.string().optional(),
+  outputSchema: z.record(z.string(), z.unknown()).optional(),
   subagents: z.record(z.string(), RawSubagentProfileSchema).optional(),
 });
 
@@ -52,5 +54,6 @@ export interface ResolvedAgentProfile {
   systemPrompt: SystemPromptRenderer;
   tools: string[];
   whenToUse?: string;
+  outputSchema?: Record<string, unknown>;
   subagents?: Record<string, ResolvedAgentProfile>;
 }

@@ -22,6 +22,7 @@ import type { SessionSubagentHost } from '../session/subagent-host';
 import type { SkillRegistry } from '../skill';
 import { noopTelemetryClient, type TelemetryClient } from '../telemetry';
 import type { PromisableMethods } from '../utils/types';
+import type { AgentLedger, ArtifactSchemaRegistry, SubagentFSM } from '#/agent/artifact';
 import { BackgroundManager, BackgroundTaskPersistence } from './background';
 import {
   FullCompaction,
@@ -131,6 +132,13 @@ export class Agent {
   readonly cron: CronManager | null;
   readonly goal: GoalMode;
   readonly replayBuilder: ReplayBuilder;
+  /** Artifact ledger and FSM for subagents running in artifact output mode. */
+  artifacts?: {
+    readonly ledger: AgentLedger;
+    readonly fsm: SubagentFSM;
+    readonly profileName: string;
+    readonly schemaRegistry: ArtifactSchemaRegistry;
+  };
 
   private lastLlmConfigLogSignature?: string;
 

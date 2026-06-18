@@ -13,7 +13,9 @@ import type { SDKSessionRPC } from '../../src/rpc';
 import { Session } from '../../src/session';
 import { collectGitContext } from '../../src/session/git-context';
 import {
+  NoCheckpointArtifactError,
   SessionSubagentHost,
+  SynthesisArtifactError,
   type QueuedSubagentTask,
 } from '../../src/session/subagent-host';
 import { abortError, userCancellationReason } from '../../src/utils/abort';
@@ -196,6 +198,158 @@ describe('SessionSubagentHost', () => {
         event: 'subagent.failed',
       }),
     );
+  });
+
+  it('returns a committed artifact when a subagent yields in artifact mode', async () => {
+    const parent = testAgent();
+    parent.configure();
+    parent.newEvents();
+
+    const sessionDir = await mkdtemp(join(tmpdir(), 'artifact-host-'));
+    tempDirs.push(sessionDir);
+
+    const child = testAgent({ type: 'sub', homedir: sessionDir });
+    child.mockNextResponse({
+      type: 'function',
+      id: 'call_yield',
+      name: 'YieldArtifact',
+      arguments: JSON.stringify({ payload: { answer: 42 }, finalize: true }),
+    });
+
+    const session = fakeSession(parent.agent, child.agent, {}, sessionDir);
+    const host = new SessionSubagentHost(session, 'main');
+
+    const handle = await host.spawn({
+      profileName: 'coder',
+      parentToolCallId: 'call_agent',
+      prompt: 'Return the answer',
+      description: 'Return artifact',
+      runInBackground: false,
+      signal,
+      output_mode: 'artifact',
+    });
+
+    await expect(handle.completion).resolves.toMatchObject({
+      result: JSON.stringify({ answer: 42 }),
+      artifact: expect.objectContaining({
+        artifactId: 'final',
+        profileName: 'coder',
+        payload: { answer: 42 },
+      }),
+    });
+  });
+
+  it('fails deterministically when an artifact-mode subagent does not yield', async () => {
+    const parent = testAgent();
+    parent.configure();
+    parent.newEvents();
+
+    const sessionDir = await mkdtemp(join(tmpdir(), 'artifact-host-'));
+    tempDirs.push(sessionDir);
+
+    const child = testAgent({ type: 'sub', homedir: sessionDir });
+    child.mockNextResponse({ type: 'text', text: 'I am done.' });
+
+    const session = fakeSession(parent.agent, child.agent, {}, sessionDir);
+    const host = new SessionSubagentHost(session, 'main');
+
+    const handle = await host.spawn({
+      profileName: 'coder',
+      parentToolCallId: 'call_agent',
+      prompt: 'Return the answer',
+      description: 'Missing artifact',
+      runInBackground: false,
+      signal,
+      output_mode: 'artifact',
+    });
+
+    await expect(handle.completion).rejects.toThrow(
+      'finished in artifact mode without checkpoints; synthesis is not possible',
+    );
+    await expect(handle.completion).rejects.toThrow(NoCheckpointArtifactError);
+  });
+
+  it('recovers a missing final artifact from checkpoints via stateless synthesis', async () => {
+    const parent = testAgent();
+    parent.configure();
+    parent.newEvents();
+
+    const sessionDir = await mkdtemp(join(tmpdir(), 'artifact-host-'));
+    tempDirs.push(sessionDir);
+
+    const child = testAgent({ type: 'sub', homedir: sessionDir });
+    child.mockNextResponse(
+      yieldArtifactCall({ artifactId: 'checkpoint-0', payload: { partial: true }, finalize: false }),
+    );
+    child.mockNextResponse({ type: 'text', text: 'I have intermediate state but no final artifact.' });
+    child.mockNextResponse(
+      yieldArtifactCall({ payload: { answer: 42 }, finalize: true }),
+    );
+
+    const session = fakeSession(parent.agent, child.agent, {}, sessionDir);
+    const host = new SessionSubagentHost(session, 'main');
+
+    const handle = await host.spawn({
+      profileName: 'coder',
+      parentToolCallId: 'call_agent',
+      prompt: 'Return the answer',
+      description: 'Synthesize artifact',
+      runInBackground: false,
+      signal,
+      output_mode: 'artifact',
+    });
+
+    await expect(handle.completion).resolves.toMatchObject({
+      result: JSON.stringify({ answer: 42 }),
+      artifact: expect.objectContaining({
+        artifactId: 'final',
+        profileName: 'coder',
+        payload: { answer: 42 },
+      }),
+    });
+
+    expect(parent.allEvents).toContainEqual(
+      expect.objectContaining({
+        type: '[rpc]',
+        event: 'subagent.completed',
+        args: expect.objectContaining({
+          subagentId: 'agent-0',
+          resultSummary: JSON.stringify({ answer: 42 }),
+        }),
+      }),
+    );
+  });
+
+  it('fails with a wrapped error when synthesis cannot produce a final artifact', async () => {
+    const parent = testAgent();
+    parent.configure();
+    parent.newEvents();
+
+    const sessionDir = await mkdtemp(join(tmpdir(), 'artifact-host-'));
+    tempDirs.push(sessionDir);
+
+    const child = testAgent({ type: 'sub', homedir: sessionDir });
+    child.mockNextResponse(
+      yieldArtifactCall({ artifactId: 'checkpoint-0', payload: { partial: true }, finalize: false }),
+    );
+    child.mockNextResponse({ type: 'text', text: 'I have intermediate state but no final artifact.' });
+    child.mockNextResponse({ type: 'text', text: 'I cannot synthesize a final answer.' });
+
+    const session = fakeSession(parent.agent, child.agent, {}, sessionDir);
+    const host = new SessionSubagentHost(session, 'main');
+
+    const handle = await host.spawn({
+      profileName: 'coder',
+      parentToolCallId: 'call_agent',
+      prompt: 'Return the answer',
+      description: 'Synthesize artifact failure',
+      runInBackground: false,
+      signal,
+      output_mode: 'artifact',
+    });
+
+    await expect(handle.completion).rejects.toThrow(SynthesisArtifactError);
+    await expect(handle.completion).rejects.toThrow('Synthesis recovery failed for subagent agent-0');
   });
 
   it('marks a queued child ready when the model emits thinking output', async () => {
@@ -1444,6 +1598,7 @@ function fakeSession(
   parent: Agent,
   child: Agent,
   metadataAgents: Session['metadata']['agents'] = {},
+  kimiHomeDir?: string,
 ) {
   const agents = new Map<string, Agent>([['main', parent]]);
   if (metadataAgents['agent-0'] !== undefined) {
@@ -1451,7 +1606,7 @@ function fakeSession(
   }
   return {
     agents,
-    options: { kimiHomeDir: undefined },
+    options: { kimiHomeDir },
     metadata: {
       createdAt: '2026-01-01T00:00:00.000Z',
       updatedAt: '2026-01-01T00:00:00.000Z',
@@ -1635,6 +1790,23 @@ function bashCall(): ToolCall {
     id: 'call_bash',
     name: 'Bash',
       arguments: '{"command":"printf should-not-run","timeout":60}',
+  };
+}
+
+function yieldArtifactCall(options: {
+  artifactId?: string;
+  payload: Record<string, unknown>;
+  finalize: boolean;
+}): ToolCall {
+  return {
+    type: 'function',
+    id: 'call_yield',
+    name: 'YieldArtifact',
+    arguments: JSON.stringify({
+      artifact_id: options.artifactId,
+      payload: options.payload,
+      finalize: options.finalize,
+    }),
   };
 }
 

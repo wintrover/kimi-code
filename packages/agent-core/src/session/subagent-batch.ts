@@ -1,6 +1,7 @@
 import { isProviderRateLimitError, type TokenUsage } from '@moonshot-ai/kosong';
 import * as retry from 'retry';
 
+import type { ArtifactRecord } from '../agent/artifact';
 import type {
   RunSubagentOptions,
   SpawnSubagentOptions,
@@ -49,6 +50,8 @@ type BaseQueuedSubagentTask<T> = {
   readonly runInBackground: boolean;
   readonly timeout?: number;
   readonly signal?: AbortSignal;
+  readonly output_mode?: 'artifact' | 'text';
+  readonly isolate_workspace?: boolean;
 };
 
 export type SpawnQueuedSubagentTask<T = unknown> = BaseQueuedSubagentTask<T> & {
@@ -73,6 +76,7 @@ export type SubagentResult<T = unknown> = {
   readonly result?: string;
   readonly usage?: TokenUsage;
   readonly error?: string;
+  readonly artifact?: ArtifactRecord;
 };
 
 export type SubagentSuspendedEvent = {
@@ -290,6 +294,8 @@ export class SubagentBatch<T> {
         this.markAttemptReady(attempt);
       },
       suppressRateLimitFailureEvent: true,
+      output_mode: task.output_mode,
+      isolate_workspace: task.isolate_workspace,
     };
 
     let handle: SubagentHandle;
@@ -320,6 +326,7 @@ export class SubagentBatch<T> {
         status: 'completed',
         result: completion.result,
         usage: completion.usage,
+        artifact: completion.artifact,
       };
     } catch (error) {
       if (isProviderRateLimitError(error)) {

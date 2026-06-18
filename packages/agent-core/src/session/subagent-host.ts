@@ -5,6 +5,14 @@ import {
 } from '@moonshot-ai/kosong';
 
 import type { Agent } from '../agent';
+import {
+  allocateSubagentWorkspace,
+  ArtifactSchemaRegistry,
+  FileSystemAgentLedger,
+  SubagentFSM,
+  type ArtifactRecord,
+  type SubagentWorkspacePaths,
+} from '../agent/artifact';
 import type { PromptOrigin } from '../agent/context';
 import { ErrorCodes, type KimiErrorPayload } from '../errors';
 import { DenyAllPermissionPolicy } from '../agent/permission/policies/deny-all';
@@ -77,6 +85,9 @@ export interface RunSubagentOptions {
   readonly signal: AbortSignal;
   readonly onReady?: () => void;
   readonly suppressRateLimitFailureEvent?: boolean;
+  readonly output_mode?: 'artifact' | 'text';
+  readonly isolate_workspace?: boolean;
+  readonly isRecoverySynthesis?: boolean;
 }
 
 export interface SpawnSubagentOptions extends RunSubagentOptions {
@@ -87,7 +98,35 @@ export interface SpawnSubagentOptions extends RunSubagentOptions {
 type SubagentCompletion = {
   readonly result: string;
   readonly usage?: TokenUsage;
+  readonly artifact?: ArtifactRecord;
 };
+
+export class MissingArtifactError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'MissingArtifactError';
+  }
+}
+
+export class NoCheckpointArtifactError extends MissingArtifactError {
+  constructor(childId: string) {
+    super(
+      `Subagent ${childId} finished in artifact mode without checkpoints; synthesis is not possible.`,
+    );
+    this.name = 'NoCheckpointArtifactError';
+  }
+}
+
+export class SynthesisArtifactError extends Error {
+  constructor(
+    message: string,
+    readonly originalError: Error,
+    readonly synthesisError?: Error,
+  ) {
+    super(message);
+    this.name = 'SynthesisArtifactError';
+  }
+}
 
 export type SubagentHandle = {
   readonly agentId: string;
@@ -104,6 +143,7 @@ export class SessionSubagentHost {
       readonly runInBackground: boolean;
     }
   >();
+  private recoveryDepth = 0;
 
   constructor(
     private readonly session: Session,
@@ -119,14 +159,49 @@ export class SessionSubagentHost {
 
     const parent = await this.session.ensureAgentResumed(this.ownerAgentId);
     const profile = this.resolveProfile(parent, options.profileName);
+    const outputMode = options.output_mode ?? 'text';
+    const isolateWorkspace = options.isolate_workspace ?? true;
     const { id, agent } = await this.session.createAgent(
       { type: 'sub', generate: parent.rawGenerate },
       { parentAgentId: this.ownerAgentId, swarmItem: options.swarmItem },
     );
+
+    let artifactWorkspacePaths: SubagentWorkspacePaths | undefined;
+    if (outputMode === 'artifact') {
+      const sessionHome = this.session.options.kimiHomeDir ?? parent.homedir;
+      if (sessionHome === undefined) {
+        throw new Error('Cannot spawn artifact-mode subagent without a session home directory');
+      }
+      const workspace = await allocateSubagentWorkspace({
+        sessionHome,
+        agentId: id,
+      });
+      artifactWorkspacePaths = workspace.paths;
+      const ledger = new FileSystemAgentLedger({
+        agentId: id,
+        artifactsDir: workspace.paths.artifacts,
+      });
+      const schemaRegistry = ArtifactSchemaRegistry.default();
+      if (profile.outputSchema !== undefined) {
+        schemaRegistry.registerJsonSchema(profile.name, profile.outputSchema);
+      }
+      agent.artifacts = {
+        ledger,
+        fsm: new SubagentFSM(),
+        profileName: profile.name,
+        schemaRegistry,
+      };
+      agent.artifacts.fsm.transition('exploring');
+    }
+
     const completion = this.runWithActiveChild(id, options, async (runOptions) => {
       this.emitSubagentSpawned(parent, id, profile.name, runOptions);
       try {
-        await this.configureChild(parent, agent, profile);
+        await this.configureChild(parent, agent, profile, {
+          outputMode,
+          workspacePaths: artifactWorkspacePaths,
+          isolateWorkspace,
+        });
         return await this.runPromptTurn(parent, id, agent, profile.name, runOptions);
       } catch (error) {
         this.emitSubagentFailed(parent, id, runOptions, error);
@@ -282,6 +357,14 @@ export class SessionSubagentHost {
     return profile;
   }
 
+  private resolveSynthesisProfile(): ResolvedAgentProfile {
+    const profile = DEFAULT_AGENT_PROFILES['synthesis'];
+    if (profile === undefined) {
+      throw new Error('Synthesis profile was not found');
+    }
+    return profile;
+  }
+
   private runWithActiveChild(
     childId: string,
     options: RunSubagentOptions,
@@ -335,6 +418,11 @@ export class SessionSubagentHost {
   ): Promise<SubagentCompletion> {
     await runChildTurnToCompletion(child, options.signal);
 
+    const outputMode = options.output_mode ?? 'text';
+    if (outputMode === 'artifact') {
+      return this.waitForArtifactCompletion(parent, childId, child, profileName, options);
+    }
+
     // A subagent that returns an overly terse summary leaves the parent
     // agent under-informed. Give it a bounded number of chances to expand
     // the handoff; if it is still short after that, accept it as-is rather
@@ -360,13 +448,185 @@ export class SessionSubagentHost {
     return { result, usage };
   }
 
+  private async waitForArtifactCompletion(
+    parent: Agent,
+    childId: string,
+    child: Agent,
+    profileName: string,
+    options: RunSubagentOptions,
+  ): Promise<SubagentCompletion> {
+    options.signal.throwIfAborted();
+    const artifacts = child.artifacts;
+    if (artifacts === undefined) {
+      throw new Error(`Subagent ${childId} is in artifact mode but has no artifact ledger`);
+    }
+
+    const usage = child.usage.data().total;
+    const committed = await artifacts.ledger.read('final');
+
+    if (committed !== undefined) {
+      const result = JSON.stringify(committed.payload);
+      parent.emitEvent({
+        type: 'subagent.completed',
+        subagentId: childId,
+        resultSummary: result,
+        usage,
+        contextTokens: child.context.tokenCount,
+      });
+      this.triggerSubagentStop(parent, profileName, result);
+      return { result, usage, artifact: committed };
+    }
+
+    // 0) Hard-coded guard against re-entrant recovery.
+    if (options.isRecoverySynthesis) {
+      throw new Error(
+        `Subagent ${childId} completed without final artifact during recovery synthesis; refusing re-entrant recovery.`,
+      );
+    }
+
+    // 1) Detect checkpoints; if none exist, fail fast.
+    const checkpoints = await artifacts.ledger.readCheckpoints(10);
+    if (checkpoints.length === 0) {
+      throw new NoCheckpointArtifactError(childId);
+    }
+
+    // 2) Run a single-shot stateless synthesis subagent.
+    return this.runSynthesisRecovery(parent, child, childId, profileName, checkpoints, options);
+  }
+
+  private async runSynthesisRecovery(
+    parent: Agent,
+    failedChild: Agent,
+    childId: string,
+    profileName: string,
+    checkpoints: ArtifactRecord[],
+    options: RunSubagentOptions,
+  ): Promise<SubagentCompletion> {
+    options.signal.throwIfAborted();
+
+    if (options.isRecoverySynthesis) {
+      throw new Error('runSynthesisRecovery called on a recovery subagent');
+    }
+    this.recoveryDepth += 1;
+    if (this.recoveryDepth > 1) {
+      this.recoveryDepth -= 1;
+      throw new Error('Recovery depth exceeded 1');
+    }
+
+    const artifactsDir = failedChild.artifacts!.ledger.artifactsDir;
+
+    const cleaned = await cleanupArtifactTmpFiles(artifactsDir);
+
+    const { id, agent: synth } = await this.session.createAgent(
+      { type: 'sub', generate: parent.rawGenerate },
+      { parentAgentId: this.ownerAgentId },
+    );
+
+    parent.telemetry.track('subagent.synthesis_recovery.tmp_cleaned', {
+      original_subagent_id: childId,
+      synthesis_subagent_id: id,
+      deleted_count: cleaned.length,
+      artifacts_dir: artifactsDir,
+    });
+
+    const ledger = new FileSystemAgentLedger({ agentId: id, artifactsDir });
+    const originalProfile = this.resolveProfile(parent, profileName);
+    const schemaRegistry = ArtifactSchemaRegistry.default();
+    if (originalProfile.outputSchema !== undefined) {
+      schemaRegistry.registerJsonSchema(originalProfile.name, originalProfile.outputSchema);
+    }
+    synth.artifacts = {
+      ledger,
+      fsm: new SubagentFSM(),
+      profileName: originalProfile.name,
+      schemaRegistry,
+    };
+    synth.artifacts.fsm.transition('exploring');
+
+    const synthesisProfile = this.resolveSynthesisProfile();
+    await this.configureChild(parent, synth, synthesisProfile, {
+      outputMode: 'artifact',
+      inheritUserTools: false,
+    });
+    // profileName stays bound to the original profile so that YieldArtifact validates
+    // the final payload against the original output schema.
+
+    const prompt = buildSynthesisPrompt(originalProfile.name, options.prompt, checkpoints);
+
+    const synthOptions: RunSubagentOptions = {
+      ...options,
+      isRecoverySynthesis: true,
+    };
+
+    parent.telemetry.track('subagent.synthesis_recovery.triggered', {
+      original_subagent_id: childId,
+      synthesis_subagent_id: id,
+      original_profile: originalProfile.name,
+      checkpoint_count: checkpoints.length,
+    });
+
+    try {
+      synth.turn.prompt([{ type: 'text', text: prompt }], SUBAGENT_PROMPT_ORIGIN);
+      await runChildTurnToCompletion(synth, synthOptions.signal);
+
+      const final = await ledger.read('final');
+      if (final === undefined) {
+        throw new Error('Synthesis subagent did not yield a final artifact.');
+      }
+
+      parent.telemetry.track('subagent.synthesis_recovery.succeeded', {
+        original_subagent_id: childId,
+        synthesis_subagent_id: id,
+        original_profile: originalProfile.name,
+        checkpoint_count: checkpoints.length,
+      });
+
+      const result = JSON.stringify(final.payload);
+      parent.emitEvent({
+        type: 'subagent.completed',
+        subagentId: childId,
+        resultSummary: result,
+        usage: synth.usage.data().total,
+        contextTokens: synth.context.tokenCount,
+      });
+      this.triggerSubagentStop(parent, profileName, result);
+      return { result, usage: synth.usage.data().total, artifact: final };
+    } catch (synthesisError) {
+      parent.telemetry.track('subagent.synthesis_recovery.failed', {
+        original_subagent_id: childId,
+        synthesis_subagent_id: id,
+        original_profile: originalProfile.name,
+        checkpoint_count: checkpoints.length,
+      });
+      throw new SynthesisArtifactError(
+        `Synthesis recovery failed for subagent ${childId}.`,
+        new MissingArtifactError(`Subagent ${childId} finished without final artifact.`),
+        synthesisError instanceof Error ? synthesisError : new Error(String(synthesisError)),
+      );
+    } finally {
+      this.recoveryDepth -= 1;
+    }
+  }
+
   private async configureChild(
     parent: Agent,
     child: Agent,
     profile: ResolvedAgentProfile,
+    options?: {
+      readonly outputMode?: 'artifact' | 'text';
+      readonly workspacePaths?: SubagentWorkspacePaths;
+      readonly isolateWorkspace?: boolean;
+      readonly inheritUserTools?: boolean;
+    },
   ): Promise<void> {
+    const outputMode = options?.outputMode ?? 'text';
+    const cwd =
+      outputMode === 'artifact' && options?.workspacePaths !== undefined && options.isolateWorkspace !== false
+        ? options.workspacePaths.workspace
+        : parent.config.cwd;
+
     child.config.update({
-      cwd: parent.config.cwd,
+      cwd,
       modelAlias: this.resolveSubagentModel(parent),
       thinkingLevel: parent.config.thinkingLevel,
     });
@@ -376,7 +636,14 @@ export class SessionSubagentHost {
       this.session.options.kimiHomeDir,
     );
     child.useProfile(profile, context);
-    child.tools.inheritUserTools(parent.tools);
+
+    if (outputMode === 'artifact') {
+      child.tools.setActiveTools([...profile.tools, 'YieldArtifact']);
+    }
+
+    if (options?.inheritUserTools !== false) {
+      child.tools.inheritUserTools(parent.tools);
+    }
 
     const childCaps = child.config.data().modelCapabilities;
     if (!childCaps.tool_use) {
@@ -516,4 +783,138 @@ function shouldSuppressQueuedAttemptFailureEvent(
   if (options.suppressRateLimitFailureEvent !== true) return false;
   if (isProviderRateLimitError(error)) return true;
   return isAbortError(error) || options.signal.aborted;
+}
+
+const ARTIFACT_TMP_PATTERN = /^.*\.json\.tmp-[0-9a-f-]{36}$/;
+
+export async function cleanupArtifactTmpFiles(artifactsDir: string): Promise<string[]> {
+  const { readdir, unlink } = await import('node:fs/promises');
+  const { resolve } = await import('pathe');
+  const deleted: string[] = [];
+
+  let entries: string[];
+  try {
+    entries = await readdir(artifactsDir);
+  } catch {
+    return deleted;
+  }
+
+  const baseDir = resolve(artifactsDir);
+  for (const entry of entries) {
+    if (!ARTIFACT_TMP_PATTERN.test(entry)) continue;
+    const filePath = resolve(baseDir, entry);
+    if (!filePath.startsWith(baseDir)) continue;
+    try {
+      await unlink(filePath);
+      deleted.push(filePath);
+    } catch {
+      // Cleanup failures must not abort synthesis recovery.
+    }
+  }
+  return deleted;
+}
+
+const TRUNCATED_PLACEHOLDER = '"[TRUNCATED_BY_SYSTEM]"';
+const TRUNCATED_PLACEHOLDER_LEN = TRUNCATED_PLACEHOLDER.length;
+const SYNTHESIS_TOTAL_PAYLOAD_BUDGET_CHARS = 6144;
+const SYNTHESIS_PROMPT_OVERHEAD_CHARS = 512;
+
+export function compactPayload(obj: unknown, budget: number): string {
+  const { serialized } = compactValue(obj, budget);
+  return serialized;
+}
+
+interface CompactValueResult {
+  readonly serialized: string;
+  readonly length: number;
+}
+
+function compactValue(obj: unknown, budget: number): CompactValueResult {
+  if (obj === null || typeof obj !== 'object') {
+    const serialized = JSON.stringify(obj);
+    return { serialized, length: serialized.length };
+  }
+
+  if (Array.isArray(obj)) {
+    const parts: string[] = [];
+    let length = 2; // '[' + ']'
+    for (const item of obj) {
+      const sep = parts.length === 0 ? '' : ',';
+      if (length + sep.length + TRUNCATED_PLACEHOLDER_LEN > budget) {
+        parts.push(TRUNCATED_PLACEHOLDER);
+        length += sep.length + TRUNCATED_PLACEHOLDER_LEN;
+        break;
+      }
+      const itemResult = compactValue(item, Math.max(0, budget - length - sep.length));
+      if (length + sep.length + itemResult.length > budget) {
+        parts.push(TRUNCATED_PLACEHOLDER);
+        length += sep.length + TRUNCATED_PLACEHOLDER_LEN;
+        break;
+      }
+      parts.push(itemResult.serialized);
+      length += sep.length + itemResult.length;
+    }
+    return { serialized: `[${parts.join(',')}]`, length };
+  }
+
+  const entries: string[] = [];
+  let length = 2; // '{' + '}'
+  for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
+    const sep = entries.length === 0 ? '' : ',';
+    const keySerialized = JSON.stringify(key);
+    if (length + sep.length + keySerialized.length + 1 + TRUNCATED_PLACEHOLDER_LEN > budget) {
+      entries.push(`${sep}${keySerialized}:${TRUNCATED_PLACEHOLDER}`);
+      length += sep.length + keySerialized.length + 1 + TRUNCATED_PLACEHOLDER_LEN;
+      break;
+    }
+    const valueResult = compactValue(
+      value,
+      Math.max(0, budget - length - sep.length - keySerialized.length - 1),
+    );
+    const entry = `${keySerialized}:${valueResult.serialized}`;
+    if (length + sep.length + entry.length > budget) {
+      entries.push(`${sep}${keySerialized}:${TRUNCATED_PLACEHOLDER}`);
+      length += sep.length + keySerialized.length + 1 + TRUNCATED_PLACEHOLDER_LEN;
+      break;
+    }
+    entries.push(`${sep}${entry}`);
+    length += sep.length + entry.length;
+  }
+  return { serialized: `{${entries.join('')}}`, length };
+}
+
+export function buildSynthesisPrompt(
+  originalProfileName: string,
+  originalPrompt: string,
+  checkpoints: ArtifactRecord[],
+): string {
+  const totalPayloadBudget = Math.max(
+    1024,
+    SYNTHESIS_TOTAL_PAYLOAD_BUDGET_CHARS - SYNTHESIS_PROMPT_OVERHEAD_CHARS,
+  );
+  const perPayloadBudget = Math.floor(totalPayloadBudget / Math.max(1, checkpoints.length));
+
+  const blocks = checkpoints.map((checkpoint) =>
+    [
+      '---',
+      `artifact_id: ${checkpoint.artifactId}`,
+      `sequence: ${checkpoint.sequence}`,
+      `schema_version: ${checkpoint.schemaVersion}`,
+      '---',
+      compactPayload(checkpoint.payload, perPayloadBudget),
+    ].join('\n'),
+  );
+
+  return [
+    '# Synthesis Recovery Task',
+    '',
+    `Original profile: ${originalProfileName}`,
+    'Original task:',
+    originalPrompt,
+    '',
+    `## Checkpoint artifacts (${checkpoints.length})`,
+    ...blocks,
+    '',
+    'Now produce the single final artifact by calling YieldArtifact with finalize: true.',
+  ].join('\n');
 }

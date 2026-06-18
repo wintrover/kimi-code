@@ -6,4 +6,8 @@ Use `resume_agent_ids` to continue subagents that already exist from earlier wor
 
 Use enough subagents to keep the work focused and parallel. AgentSwarm supports up to 128 subagents, and launches are queued automatically, so it is safe to split large tasks into many clear, independent items.
 
+Output mode:
+- `output_mode='text'` (default): each subagent returns a natural-language summary, and results are rendered as one `<subagent>` node per subagent.
+- `output_mode='artifact'`: every spawned subagent must call `YieldArtifact(payload=..., finalize=true)`. Each payload is written atomically to its own isolated workspace ledger. Completed results include `artifact_id` and `schema_version` attributes so you can correlate structured outputs. If any subagent finishes without yielding, that subagent fails deterministically.
+
 If `AgentSwarm` is called, that call must be the only tool call in the response.

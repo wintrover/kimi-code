@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import type { ArtifactRecord } from '../../../agent/artifact';
 import type { SwarmMode } from '../../../agent/swarm';
 import type { BuiltinTool } from '../../../agent/tool';
 import {
@@ -77,6 +78,12 @@ export const AgentSwarmToolInputSchema = z
       .describe(
         'When true with partition_strategy "ast-z3", each agent gets an isolated git worktree on its own branch. Prevents race conditions when agents modify files concurrently. After all agents complete, branches are merged in deterministic topological order based on the dependency graph.',
       ),
+    output_mode: z
+      .enum(['artifact', 'text'])
+      .optional()
+      .describe(
+        "Output mode for every spawned subagent. 'artifact' requires each subagent to call YieldArtifact; 'text' uses legacy natural-language summaries. Defaults to 'text'.",
+      ),
   })
   .strict();
 
@@ -106,6 +113,7 @@ interface SwarmRunResult {
   readonly state?: 'started' | 'not_started';
   readonly result?: string;
   readonly error?: string;
+  readonly artifact?: ArtifactRecord;
 }
 
 export class AgentSwarmTool implements BuiltinTool<AgentSwarmToolInput> {
@@ -283,6 +291,7 @@ export class AgentSwarmTool implements BuiltinTool<AgentSwarmToolInput> {
         swarmItem: spec.item,
         signal,
         timeout: DEFAULT_SUBAGENT_TIMEOUT_MS,
+        output_mode: args.output_mode,
       };
       if (spec.kind === 'resume') {
         return {
@@ -393,9 +402,13 @@ function renderSwarmResults(results: readonly SwarmRunResult[]): string {
     const mode = result.spec.kind === 'resume' ? ' mode="resume"' : '';
     const item = result.spec.item === undefined ? '' : ` item="${escapeXmlAttribute(result.spec.item)}"`;
     const state = result.state === undefined ? '' : ` state="${result.state}"`;
+    const artifactId =
+      result.artifact === undefined ? '' : ` artifact_id="${escapeXmlAttribute(result.artifact.artifactId)}"`;
+    const schemaVersion =
+      result.artifact === undefined ? '' : ` schema_version="${escapeXmlAttribute(result.artifact.schemaVersion)}"`;
     const body = result.status === 'completed' ? (result.result ?? '') : (result.error ?? 'unknown error');
     lines.push(
-      `<subagent${mode}${agentId}${item}${state} outcome="${result.status}">${body}</subagent>`,
+      `<subagent${mode}${agentId}${item}${state}${artifactId}${schemaVersion} outcome="${result.status}">${body}</subagent>`,
     );
   }
 

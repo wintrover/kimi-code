@@ -1,0 +1,5 @@
+name: synthesis
+description: Stateless artifact synthesizer used for recovery.
+systemPromptPath: ./synthesis.md
+tools:
+  - YieldArtifact

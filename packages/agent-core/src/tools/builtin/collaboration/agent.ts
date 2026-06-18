@@ -81,6 +81,18 @@ export const AgentToolInputSchema = z.preprocess(
       .describe(
         'If true, return immediately without waiting for completion. Prefer false unless the task can run independently and there is a clear benefit to not waiting.',
       ),
+    output_mode: z
+      .enum(['artifact', 'text'])
+      .optional()
+      .describe(
+        "Output mode for the subagent. 'artifact' requires the subagent to call YieldArtifact; 'text' uses the legacy natural-language summary. Defaults to 'text'.",
+      ),
+    isolate_workspace: z
+      .boolean()
+      .optional()
+      .describe(
+        'Whether to allocate an isolated workspace for the subagent. Defaults to true.',
+      ),
   }),
 );
 
@@ -196,6 +208,8 @@ export class AgentTool implements BuiltinTool<AgentToolInput> {
         description: args.description,
         runInBackground,
         signal: backgroundController?.signal ?? foregroundDeadline?.signal ?? signal,
+        output_mode: args.output_mode,
+        isolate_workspace: args.isolate_workspace,
       };
 
       let handle: SubagentHandle;
@@ -270,6 +284,13 @@ export class AgentTool implements BuiltinTool<AgentToolInput> {
           `agent_id: ${handle.agentId}`,
           `actual_subagent_type: ${handle.profileName}`,
           'status: completed',
+          ...(result.artifact
+            ? [
+                `artifact_id: ${result.artifact.artifactId}`,
+                `schema_version: ${result.artifact.schemaVersion}`,
+                `artifact_path: <session>/subagents/${handle.agentId}/artifacts/${result.artifact.artifactId}.json`,
+              ]
+            : []),
           '',
           '[summary]',
           result.result,

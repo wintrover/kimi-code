@@ -416,6 +416,7 @@ export class ToolManager {
           ),
         this.agent.subagentHost &&
           new b.AgentSwarmTool(this.agent.subagentHost, this.agent.swarmMode),
+        this.agent.type === 'sub' && new b.YieldArtifactTool(this.agent),
         toolServices?.webSearcher && new b.WebSearchTool(toolServices.webSearcher),
         toolServices?.urlFetcher && new b.FetchURLTool(toolServices.urlFetcher),
       ]

@@ -11,6 +11,10 @@ Usage notes:
 - A subagent's result is only visible to you, not to the user. When the user needs to see what a subagent produced, summarize the relevant parts yourself in your own reply.
 - Subagents use a fixed 30-minute timeout. If one times out, resume the same agent instead of starting over.
 
-When NOT to use Agent: skip delegation for trivial work you can do directly — reading a file whose path you already know, searching a small known set of files, or any task that takes only a step or two. Delegation has a context-handoff cost; it pays off only when the task is substantial enough to outweigh it.
+Output modes:
+- `output_mode='text'` (default): the subagent returns a natural-language summary, the same behavior as before.
+- `output_mode='artifact'`: the subagent must finish by calling `YieldArtifact(payload=..., finalize=true)`. Its payload is written atomically to an isolated workspace ledger and returned to you as structured JSON. The subagent gets its own workspace under `<session>/subagents/<agent_id>/`; file operations do not affect the parent working directory. If the subagent finishes without calling `YieldArtifact`, the call fails deterministically so you can retry or switch to text mode.
+
+When NOT to use Agent: skip delegation for trivial work you can do directly — reading a file whose path you already know, searching a small known set of files, or any task that takes only a step or two. Delegation has a context handoff cost; it pays off only when the task is substantial enough to outweigh it.
 
 Once a subagent is running, leave that scope to it: do not redo its searches or reads in parallel, and do not abandon it midway and finish the job manually. Both undo the context savings the delegation was meant to buy.

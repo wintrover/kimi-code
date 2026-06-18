@@ -9,6 +9,7 @@ export * from './collaboration/agent-swarm';
 export * from './collaboration/ask-user';
 export * from './collaboration/skill-tool';
 export * from './collaboration/workload-partitioner-tool';
+export * from './collaboration/yield-artifact';
 export * from './file/edit';
 export * from './file/glob';
 export * from './file/grep';
