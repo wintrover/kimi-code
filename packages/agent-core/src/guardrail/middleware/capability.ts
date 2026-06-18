@@ -1,5 +1,6 @@
 import type { GuardrailContext, GuardrailMiddleware } from '../context.js';
 import { ToolRegistryProxy } from '../tool-proxy.js';
+import { KimiError, ErrorCodes } from '#/errors';
 
 function declaredCapabilities(ctx: GuardrailContext): readonly string[] {
   const alias = ctx.agent.config.modelAlias;
@@ -39,7 +40,24 @@ export function createCapabilityMiddleware(
         ? declaredToolUse
         : true;
 
-    ctx.tools = allowed ? toolRegistry.availableTools : [];
+    if (!allowed) {
+      const available = toolRegistry.availableTools;
+      throw new KimiError(
+        ErrorCodes.CAPABILITY_MISMATCH,
+        `Model '${ctx.agent.config.modelAlias ?? "(default)"}' has explicit capabilities [${declaredCapabilities(ctx).join(', ')}] but 'tool_use' is missing. The agent requires tools to function. Add 'tool_use' to the model's capabilities in config.toml [models."${ctx.agent.config.modelAlias ?? "(default)"}"]`,
+        {
+          details: {
+            modelAlias: ctx.agent.config.modelAlias,
+            declaredCapabilities: declaredCapabilities(ctx),
+            requiredCapability: 'tool_use',
+            availableToolCount: available.length,
+            availableToolNames: available.map(t => t.name),
+            guardrailState: ctx.state,
+          },
+        },
+      );
+    }
+    ctx.tools = toolRegistry.availableTools;
     return ctx;
   };
 }

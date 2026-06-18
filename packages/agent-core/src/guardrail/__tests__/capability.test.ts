@@ -5,6 +5,7 @@ import { ToolRegistryProxy } from '../tool-proxy.js';
 import type { GuardrailConfig, GuardrailContext } from '../context.js';
 import type { ToolManager } from '#/agent/tool';
 import type { ExecutableTool } from '#/loop';
+import { KimiError, ErrorCodes } from '#/errors';
 
 function makeCapabilities(toolUse: boolean) {
   return {
@@ -59,13 +60,23 @@ describe('createCapabilityMiddleware', () => {
     expect(ctx.tools).toEqual(tools);
   });
 
-  it('removes tools when capabilities are explicit and omit tool_use', async () => {
+  it('throws KimiError when capabilities are explicit and omit tool_use', async () => {
     const tools = [{ name: 'Bash' } as ExecutableTool];
     const proxy = new ToolRegistryProxy({ loopTools: tools } as unknown as ToolManager);
     const mw = createCapabilityMiddleware(proxy);
     const ctx = makeContext({}, ['thinking']);
-    await mw(ctx);
-    expect(ctx.tools).toEqual([]);
+    await expect(mw(ctx)).rejects.toThrow(KimiError);
+    try {
+      await mw(ctx);
+    } catch (e) {
+      expect(e).toBeInstanceOf(KimiError);
+      expect((e as KimiError).code).toBe(ErrorCodes.CAPABILITY_MISMATCH);
+      expect((e as KimiError).details).toMatchObject({
+        modelAlias: 'test-model',
+        declaredCapabilities: ['thinking'],
+        requiredCapability: 'tool_use',
+      });
+    }
   });
 
   it('keeps tools when no capabilities are declared (auto-detection fallback)', async () => {
@@ -77,13 +88,23 @@ describe('createCapabilityMiddleware', () => {
     expect(ctx.tools).toEqual(tools);
   });
 
-  it('removes tools when requireDeclaredToolUse is true and tool_use is not declared', async () => {
+  it('throws KimiError when requireDeclaredToolUse is true and tool_use is not declared', async () => {
     const tools = [{ name: 'Bash' } as ExecutableTool];
     const proxy = new ToolRegistryProxy({ loopTools: tools } as unknown as ToolManager);
     const mw = createCapabilityMiddleware(proxy);
     const ctx = makeContext({ requireDeclaredToolUse: true }, ['thinking']);
-    await mw(ctx);
-    expect(ctx.tools).toEqual([]);
+    await expect(mw(ctx)).rejects.toThrow(KimiError);
+    try {
+      await mw(ctx);
+    } catch (e) {
+      expect(e).toBeInstanceOf(KimiError);
+      expect((e as KimiError).code).toBe(ErrorCodes.CAPABILITY_MISMATCH);
+      expect((e as KimiError).details).toMatchObject({
+        modelAlias: 'test-model',
+        declaredCapabilities: ['thinking'],
+        requiredCapability: 'tool_use',
+      });
+    }
   });
 
   it('keeps tools when requireDeclaredToolUse is true and tool_use is declared', async () => {

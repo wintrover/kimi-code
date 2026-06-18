@@ -1,5 +1,6 @@
 import { HOOK_EVENT_TYPES } from '../session/hooks/types';
 import { parsePattern } from '#/agent/permission/matches-rule';
+import { isToolCapable } from '#/config/capabilities';
 import { ErrorCodes, KimiError } from '#/errors';
 import { z } from 'zod';
 
@@ -52,6 +53,16 @@ export const ModelAliasSchema = z.object({
 });
 
 export type ModelAlias = z.infer<typeof ModelAliasSchema>;
+
+export const ToolCapableModelAliasSchema = ModelAliasSchema.superRefine((val, ctx) => {
+  if (!isToolCapable(val)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `Model '${val.provider}/${val.model}' must include 'tool_use' in capabilities`,
+      path: ['capabilities'],
+    });
+  }
+});
 
 export const ThinkingConfigSchema = z.object({
   mode: z.enum(['auto', 'on', 'off']).optional(),

@@ -28,6 +28,7 @@ base_url = "https://api.example/v1"
 provider = "managed:kimi-code"
 model = "kimi-for-coding"
 max_context_size = 1000000
+capabilities = ["tool_use"]
 `;
 
 describe('HarnessAPI session model aliases', () => {
@@ -299,6 +300,7 @@ base_url = "https://api.example/v1"
 provider = "ghost-provider"
 model = "kimi-for-coding"
 max_context_size = 1000000
+capabilities = ["tool_use"]
 `,
     );
 
@@ -344,6 +346,7 @@ max_context_size = 1000000
           provider: 'openai',
           model: 'gpt-runtime',
           maxContextSize: 200000,
+          capabilities: ['tool_use'],
         },
       },
     });

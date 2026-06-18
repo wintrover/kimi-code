@@ -18,6 +18,7 @@ base_url = "https://api.example/v1"
 provider = "managed:kimi-code"
 model = "kimi-for-coding"
 max_context_size = 1000000
+capabilities = ["tool_use"]
 `;
 
 describe('plan-mode bootstrap from config.defaultPlanMode', () => {

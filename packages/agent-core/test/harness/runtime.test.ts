@@ -272,6 +272,7 @@ api_key = "test-key"
 provider = "test"
 model = "default-mock"
 max_context_size = 100000
+capabilities = ["tool_use"]
 `,
     );
 
@@ -447,5 +448,6 @@ api_key = "test-key"
 provider = "test"
 model = "default-mock"
 max_context_size = 100000
+capabilities = ["tool_use"]
 `;
 }

@@ -12,6 +12,7 @@ import { Agent, type AgentOptions, type AgentType } from '../agent';
 import { HookEngine, type HookDef } from './hooks';
 import type { PermissionManagerOptions, PermissionRule } from '../agent/permission';
 import { parseBooleanEnv, resolveConfigValue, type BackgroundConfig } from '../config';
+import { validateModelCapabilityConsistency } from '../config/validate';
 import { makeErrorPayload } from '../errors';
 import {
   McpConnectionManager,
@@ -192,6 +193,11 @@ export class Session {
     this.mcp.onStatusChange((entry) => {
       this.onMcpServerStatusChange(entry);
     });
+    validateModelCapabilityConsistency(
+      this.options.config?.models ?? {},
+      this.options.config?.defaultModel,
+      this.options.config?.subagentModel,
+    );
     this.skillsReady = this.loadSkills()
       .catch((error: unknown) => {
         this.log.error('skills load failed', error);

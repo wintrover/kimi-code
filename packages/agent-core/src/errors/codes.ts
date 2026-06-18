@@ -44,6 +44,7 @@ export const ErrorCodes = {
 
   MODEL_NOT_CONFIGURED: 'model.not_configured',
   MODEL_CONFIG_INVALID: 'model.config_invalid',
+  CAPABILITY_MISMATCH: 'config.capability_mismatch',
   AUTH_LOGIN_REQUIRED: 'auth.login_required',
 
   CONTEXT_OVERFLOW: 'context.overflow',
@@ -283,6 +284,12 @@ export const KIMI_ERROR_INFO = {
     retryable: false,
     public: true,
     action: 'Check the model and provider entries in config.toml.',
+  },
+  'config.capability_mismatch': {
+    title: 'Model capability mismatch',
+    retryable: false,
+    public: true,
+    action: 'Add the required capability to the model entry in config.toml or switch to a model that supports it.',
   },
   'auth.login_required': {
     title: 'Login required',
