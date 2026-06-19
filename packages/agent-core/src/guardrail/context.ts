@@ -12,6 +12,23 @@ export type TurnEvent =
   | { readonly kind: 'tool_batch'; readonly toolCalls: readonly ToolCall[] }
   | { readonly kind: 'step_end'; readonly stopReason: 'tool_use' | 'text' };
 
+/** Per-command policy override entry. */
+export interface GuardrailOverride {
+  /** Glob pattern matched against the canonicalized Bash command or tool name. */
+  readonly match: string;
+  /** Override repeat policy for matched commands. */
+  readonly repeatPolicy?: 'block' | 'warn' | 'allow';
+  /** Override max repeats threshold (0 = unlimited). */
+  readonly maxRepeats?: number;
+  /**
+   * Semantic behavior hint:
+   * - `'default'` (or omitted): `repeatPolicy` defaults to global default.
+   * - `'stateless_search'`: `repeatPolicy` defaults to `'allow'` — the command
+   *   is intentionally repeated to search for state changes.
+   */
+  readonly behavior?: 'default' | 'stateless_search';
+}
+
 /** Guardrail configuration, sourced from `execution_guardrails` in config.toml. */
 export interface GuardrailConfig {
   readonly enabled: boolean;
@@ -26,6 +43,8 @@ export interface GuardrailConfig {
    *   outputs, i.e. the agent made no observable progress.
    */
   readonly detectionMode?: 'input-only' | 'action-observation';
+  /** Per-command policy overrides. Evaluated in order; first match wins. */
+  readonly overrides?: readonly GuardrailOverride[];
 }
 
 /** Immutable fingerprint of a single tool call. */

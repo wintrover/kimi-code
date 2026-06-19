@@ -68,6 +68,32 @@ Hook 命令的工作目录是当前会话的项目目录。非 Windows 平台上
 
 具体事件还会附带额外字段（如工具名称、命令内容），见下方事件一览。所有字段名使用下划线命名（snake_case）。
 
+#### 可选字段
+
+##### `guardrail`（可选）
+
+当 kimi-code 的执行防护规则（execution guardrails）中存在 `[[execution_guardrails.overrides]]` 条目匹配当前工具调用时，stdin 的 JSON 载荷中会包含一个 `guardrail` 对象，携带该匹配条目的上下文信息：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `override` | `string` | 生效的策略：`"allow"`、`"warn"` 或 `"block"` |
+| `pattern` | `string` | 匹配到的 override 条目中的 glob 模式 |
+| `canonical_cmd` | `string` | 规范化后的命令（经过归一化处理） |
+
+示例：
+
+```json
+{
+  "guardrail": {
+    "override": "allow",
+    "pattern": "ax prove *",
+    "canonical_cmd": "ax prove all"
+  }
+}
+```
+
+Hook 脚本可以利用此字段避免重复检测——若 `guardrail.override` 为 `"allow"`，脚本可跳过自身的重复检查逻辑，直接以退出码 0 放行。
+
 ## 返回值
 
 脚本结束后，CLI 根据退出码判断 hook 的意图：

@@ -193,6 +193,45 @@ max_context_size = 1047576
 
 在 `"input-only"` 模式下，最近 5 次工具调用里 `git status` 出现 3 次就会触发熔断。在 `"action-observation"` 模式下，只要每次输出不同就不会触发；只有当命令和输出都完全一致时，才说明 Agent 没有获得任何新信息，此时才判定为循环。
 
+### 局部覆盖
+
+全局策略对所有工具调用一视同仁，但某些命令本身就需要大量重复执行——例如反复调用证明器或持续运行测试套件直到通过。局部覆盖允许你为特定命令放宽熔断器，同时保持全局策略不变。
+
+在 `[execution_guardrails]` 表之后添加一个或多个 `[[execution_guardrails.overrides]]` 条目。覆盖条目按从上到下的顺序匹配，第一条命中即生效。
+
+| 字段 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `match` | `string` | — | **必填。** picomatch glob 模式，匹配规范化后的命令（`Bash`）或工具名（其他工具） |
+| `repeat_policy` | `string` | 继承全局值 | 覆盖匹配调用的全局策略：`"block"`、`"warn"` 或 `"allow"` |
+| `max_repeats` | `integer` | 继承全局值 | 覆盖匹配调用的全局 `max_repeats` |
+| `behavior` | `string` | `"default"` | 设为 `"stateless_search"` 可将匹配调用视为无状态读取——除非显式覆盖，否则默认 `repeat_policy = "allow"` |
+
+命令匹配会在比较前对原始输入做规范化处理：通过不动点循环依次剥离 `sudo`、`time`、`env`、内联环境变量（`KEY=VALUE`）、路径前缀（`./`、`/usr/bin/`）以及子 shell 包装（`bash -c "..."`）。例如，`sudo ax prove --limit 25` 和 `AX_TARGET=backend ax prove --limit 25` 都会被规范化为 `ax prove --limit 25`，从而命中同一条覆盖规则。
+
+```toml
+[execution_guardrails]
+enabled = true
+max_repeats = 3
+window_size = 5
+detection_mode = "input-only"
+
+# 始终允许 ax prove——证明器需要大量调用来探索证明路径
+[[execution_guardrails.overrides]]
+match = "ax prove *"
+repeat_policy = "allow"
+
+# 将 cargo test 视为无状态——默认允许，但仍受显式覆盖约束
+[[execution_guardrails.overrides]]
+match = "cargo test *"
+behavior = "stateless_search"
+
+# 超过 10 次警告，超过 20 次阻断——为长时间构建定制阈值
+[[execution_guardrails.overrides]]
+match = "make *"
+repeat_policy = "warn"
+max_repeats = 20
+```
+
 ## `experimental`
 
 `experimental` 存放实验功能 flag 的持久化覆盖。目前 `micro_compaction` 是唯一用户可见的字段，默认值为 `true`；只有在需要关闭自动清理较旧的大型工具结果时，才需要把它设为 `false`。

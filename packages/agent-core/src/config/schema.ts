@@ -128,6 +128,13 @@ export const BackgroundConfigSchema = z.object({
 
 export type BackgroundConfig = z.infer<typeof BackgroundConfigSchema>;
 
+export const GuardrailOverrideSchema = z.object({
+  match: z.string().min(1),
+  repeatPolicy: z.enum(['block', 'warn', 'allow']).optional(),
+  maxRepeats: z.number().int().min(0).optional(),
+  behavior: z.enum(['default', 'stateless_search']).optional(),
+});
+
 export const GuardrailConfigSchema = z.object({
   enabled: z.boolean().default(true),
   maxRepeats: z.number().int().min(1).default(3),
@@ -135,6 +142,7 @@ export const GuardrailConfigSchema = z.object({
   requireReviewBetweenToolBatches: z.boolean().default(false),
   requireDeclaredToolUse: z.boolean().default(false),
   detectionMode: z.enum(['input-only', 'action-observation']).optional(),
+  overrides: z.array(GuardrailOverrideSchema).optional(),
 });
 
 export type GuardrailConfig = z.infer<typeof GuardrailConfigSchema>;

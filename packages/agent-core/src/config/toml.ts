@@ -314,7 +314,7 @@ export function transformTomlData(data: Record<string, unknown>): Record<string,
     } else if (targetKey === 'background' && isPlainObject(value)) {
       result[targetKey] = transformPlainObject(value);
     } else if (targetKey === 'executionGuardrails' && isPlainObject(value)) {
-      result[targetKey] = transformPlainObject(value);
+      result[targetKey] = transformGuardrailData(value);
     } else if (targetKey === 'experimental' && isPlainObject(value)) {
       result[targetKey] = cloneRecord(value);
     } else if (!isPlainObject(value)) {
@@ -342,6 +342,16 @@ function transformPlainObject(data: Record<string, unknown>): Record<string, unk
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(data)) {
     out[snakeToCamel(key)] = value;
+  }
+  return out;
+}
+
+function transformGuardrailData(data: Record<string, unknown>): Record<string, unknown> {
+  const out = transformPlainObject(data);
+  if (Array.isArray(out['overrides'])) {
+    out['overrides'] = (out['overrides'] as Record<string, unknown>[]).map(
+      (entry) => transformPlainObject(entry),
+    );
   }
   return out;
 }
@@ -684,7 +694,17 @@ function guardrailToToml(
 ): Record<string, unknown> {
   const out = cloneRecord(rawGuardrail);
   for (const [key, value] of Object.entries(guardrail)) {
-    setDefined(out, camelToSnake(key), value);
+    if (key === 'overrides' && Array.isArray(value)) {
+      out[camelToSnake(key)] = value.map((entry) => {
+        const row: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(entry)) {
+          setDefined(row, camelToSnake(k), v);
+        }
+        return row;
+      });
+    } else {
+      setDefined(out, camelToSnake(key), value);
+    }
   }
   return out;
 }

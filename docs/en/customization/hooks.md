@@ -83,6 +83,32 @@ Each time a hook triggers, the CLI passes the following base information to the 
 
 Specific events will also include additional fields (such as tool name and command content); see the event reference below. All field names use snake_case.
 
+#### Optional fields
+
+##### `guardrail` (optional)
+
+When kimi-code's execution guardrails have an `[[execution_guardrails.overrides]]` entry that matches the current tool call, the stdin payload includes a `guardrail` object with the override context:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `override` | `string` | The effective policy: `"allow"`, `"warn"`, or `"block"` |
+| `pattern` | `string` | The glob pattern from the matching override entry |
+| `canonical_cmd` | `string` | The canonicalized command (after normalization) |
+
+Example:
+
+```json
+{
+  "guardrail": {
+    "override": "allow",
+    "pattern": "ax prove *",
+    "canonical_cmd": "ax prove all"
+  }
+}
+```
+
+Hook scripts can use this field to avoid duplicate detection — if `guardrail.override` is `"allow"`, the script may skip its own repetition checks and exit 0.
+
 ## Return Values
 
 After the script exits, the CLI determines the hook's intent based on the exit code:

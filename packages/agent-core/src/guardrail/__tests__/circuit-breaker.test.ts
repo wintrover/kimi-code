@@ -3,6 +3,7 @@ import { describe, it, expect } from 'vitest';
 import { createCircuitBreakerMiddleware } from '../middleware/circuit-breaker.js';
 import { TurnTelemetryBuffer } from '../telemetry.js';
 import { GuardrailViolationError } from '../error.js';
+import { canonicalizeCommand } from '../normalize-command.js';
 import type { GuardrailConfig, GuardrailContext } from '../context.js';
 import type { ExecutableToolResult, ToolCall } from '#/loop';
 
@@ -27,6 +28,7 @@ function makeContext(
     requireReviewBetweenToolBatches: true,
     requireDeclaredToolUse: false,
     detectionMode: config.detectionMode,
+    overrides: config.overrides,
   };
   return {
     agent: {} as GuardrailContext['agent'],
@@ -466,6 +468,165 @@ describe('createCircuitBreakerMiddleware', () => {
       }
     });
   });
+
+  describe('scoped policy overrides', () => {
+    it('allows repeated commands when override has repeat_policy = "allow"', async () => {
+      const mw = createCircuitBreakerMiddleware();
+      const config = {
+        maxRepeats: 2,
+        windowSize: 5,
+        overrides: [{ match: 'ax prove *', repeatPolicy: 'allow' as const }],
+      };
+
+      for (let i = 0; i < 5; i += 1) {
+        const ctx = makeContext(
+          { ...config, detectionMode: 'action-observation' },
+          [{ id: String(i + 1), type: 'tool', name: 'Bash', arguments: '{"command":"ax prove --limit 25"}' } as unknown as ToolCall],
+        );
+        ctx.telemetry = new TurnTelemetryBuffer(10);
+        await expect(mw(ctx)).resolves.not.toThrow();
+      }
+    });
+
+    it('warns but does not throw when override has repeat_policy = "warn"', async () => {
+      const mw = createCircuitBreakerMiddleware();
+      const telemetry = new TurnTelemetryBuffer(10);
+      const config = {
+        maxRepeats: 2,
+        windowSize: 5,
+        overrides: [{ match: 'ax prove *', repeatPolicy: 'warn' as const }],
+      };
+
+      for (let i = 0; i < 3; i += 1) {
+        const id = String(i + 1);
+        const action = makeContext(
+          { ...config, detectionMode: 'action-observation' },
+          [{ id, type: 'tool', name: 'Bash', arguments: '{"command":"ax prove --limit 25"}' } as unknown as ToolCall],
+        );
+        action.telemetry = telemetry;
+        await mw(action);
+
+        const obs = makeContext(
+          { ...config, detectionMode: 'action-observation' },
+          [{ id, type: 'tool', name: 'Bash', arguments: '{"command":"ax prove --limit 25"}' } as unknown as ToolCall],
+          [{ output: 'All proofs passed' }],
+        );
+        obs.telemetry = telemetry;
+        await expect(mw(obs)).resolves.toBeDefined();
+      }
+    });
+
+    it('uses custom max_repeats from override', async () => {
+      const mw = createCircuitBreakerMiddleware();
+      const telemetry = new TurnTelemetryBuffer(20);
+      const config = {
+        maxRepeats: 2,
+        windowSize: 20,
+        overrides: [{ match: 'pnpm test *', repeatPolicy: 'block' as const, maxRepeats: 4 }],
+      };
+
+      // 3 identical calls should NOT trip (global maxRepeats=2, but override is 4)
+      for (let i = 0; i < 3; i += 1) {
+        const id = String(i + 1);
+        const action = makeContext(
+          { ...config, detectionMode: 'action-observation' },
+          [{ id, type: 'tool', name: 'Bash', arguments: '{"command":"pnpm test --all"}' } as unknown as ToolCall],
+        );
+        action.telemetry = telemetry;
+        await mw(action);
+
+        const obs = makeContext(
+          { ...config, detectionMode: 'action-observation' },
+          [{ id, type: 'tool', name: 'Bash', arguments: '{"command":"pnpm test --all"}' } as unknown as ToolCall],
+          [{ output: 'all passed' }],
+        );
+        obs.telemetry = telemetry;
+        await expect(mw(obs)).resolves.toBeDefined();
+      }
+    });
+
+    it('falls back to default policy for non-matched commands', async () => {
+      const mw = createCircuitBreakerMiddleware();
+      const telemetry = new TurnTelemetryBuffer(5);
+      const config = {
+        maxRepeats: 2,
+        windowSize: 5,
+        overrides: [{ match: 'ax prove *', repeatPolicy: 'allow' as const }],
+      };
+
+      // "ls -la" does NOT match "ax prove *" -> should use default block policy
+      for (let i = 0; i < 2; i += 1) {
+        const id = String(i + 1);
+        const action = makeContext(
+          { ...config, detectionMode: 'action-observation' },
+          [{ id, type: 'tool', name: 'Bash', arguments: '{"command":"ls -la"}' } as unknown as ToolCall],
+        );
+        action.telemetry = telemetry;
+        await mw(action);
+
+        const obs = makeContext(
+          { ...config, detectionMode: 'action-observation' },
+          [{ id, type: 'tool', name: 'Bash', arguments: '{"command":"ls -la"}' } as unknown as ToolCall],
+          [{ output: 'total 0' }],
+        );
+        obs.telemetry = telemetry;
+        if (i === 1) {
+          await expect(mw(obs)).rejects.toThrow(GuardrailViolationError);
+        } else {
+          await expect(mw(obs)).resolves.toBeDefined();
+        }
+      }
+    });
+
+    it('first override match wins', async () => {
+      const mw = createCircuitBreakerMiddleware();
+      const config = {
+        maxRepeats: 2,
+        windowSize: 5,
+        overrides: [
+          { match: 'ax*', repeatPolicy: 'block' as const },
+          { match: 'ax prove *', repeatPolicy: 'allow' as const },
+        ],
+      };
+
+      // "ax prove --limit 25" matches both, but first match ("ax*") says block
+      const ctx = makeContext(
+        { ...config, detectionMode: 'input-only' },
+        [
+          { id: '1', type: 'tool', name: 'Bash', arguments: '{"command":"ax prove --limit 25"}' },
+          { id: '2', type: 'tool', name: 'Bash', arguments: '{"command":"ax prove --limit 25"}' },
+        ] as unknown as ToolCall[],
+      );
+      await expect(mw(ctx)).rejects.toThrow();
+    });
+
+    it('stateless_search behavior defaults to allow', async () => {
+      const mw = createCircuitBreakerMiddleware();
+      const config = {
+        maxRepeats: 2,
+        windowSize: 5,
+        overrides: [{ match: 'cargo test *', behavior: 'stateless_search' as const }],
+      };
+
+      for (let i = 0; i < 5; i += 1) {
+        const ctx = makeContext(
+          { ...config, detectionMode: 'action-observation' },
+          [{ id: String(i + 1), type: 'tool', name: 'Bash', arguments: '{"command":"cargo test"}' } as unknown as ToolCall],
+        );
+        ctx.telemetry = new TurnTelemetryBuffer(10);
+        await expect(mw(ctx)).resolves.not.toThrow();
+      }
+    });
+
+    it('no-op with empty overrides array', async () => {
+      const mw = createCircuitBreakerMiddleware();
+      const ctx = makeContext(
+        { maxRepeats: 2, windowSize: 5, overrides: [] },
+        [{ id: '1', type: 'tool', name: 'Bash', arguments: '{"command":"echo hi"}' } as unknown as ToolCall],
+      );
+      await expect(mw(ctx)).resolves.toBeDefined();
+    });
+  });
 });
 
 describe('TurnTelemetryBuffer', () => {
@@ -501,5 +662,58 @@ describe('TurnTelemetryBuffer', () => {
       buf.invalidateFingerprints('Bash');
       expect(buf.records).toHaveLength(0);
     });
+  });
+});
+
+describe('canonicalizeCommand', () => {
+  it('strips ./ prefix', () => {
+    expect(canonicalizeCommand('./ax prove --limit 25')).toBe('ax prove --limit 25');
+  });
+
+  it('strips inline env var', () => {
+    expect(canonicalizeCommand('ENV=prod ax prove --limit 25')).toBe('ax prove --limit 25');
+  });
+
+  it('strips sudo prefix', () => {
+    expect(canonicalizeCommand('sudo ax prove --limit 25')).toBe('ax prove --limit 25');
+  });
+
+  it('handles order-independent prefixes (fixed-point)', () => {
+    expect(canonicalizeCommand('ENV=prod sudo ax prove')).toBe('ax prove');
+    expect(canonicalizeCommand('sudo ENV=prod ax prove')).toBe('ax prove');
+  });
+
+  it('handles multiple env vars', () => {
+    expect(canonicalizeCommand('A=1 B=2 ax prove')).toBe('ax prove');
+  });
+
+  it('handles mixed prefixes and paths', () => {
+    expect(canonicalizeCommand('A=1 B=2 sudo ./bin/ax prove')).toBe('ax prove');
+  });
+
+  it('unwraps bash -c subshell', () => {
+    expect(canonicalizeCommand('bash -c "ax prove"')).toBe('ax prove');
+  });
+
+  it('unwraps sh -c subshell', () => {
+    expect(canonicalizeCommand("sh -c 'ax prove --limit 25'")).toBe('ax prove --limit 25');
+  });
+
+  it('handles subshell with nested prefixes (fixed-point)', () => {
+    expect(canonicalizeCommand('sudo bash -c "ENV=prod ./bin/ax prove --limit 25"')).toBe('ax prove --limit 25');
+  });
+
+  it('strips absolute path prefix', () => {
+    expect(canonicalizeCommand('/usr/local/bin/ax prove')).toBe('ax prove');
+    expect(canonicalizeCommand('/usr/bin/ax prove')).toBe('ax prove');
+    expect(canonicalizeCommand('/bin/ax prove')).toBe('ax prove');
+  });
+
+  it('collapses whitespace', () => {
+    expect(canonicalizeCommand('  ax   prove   --limit  25  ')).toBe('ax prove --limit 25');
+  });
+
+  it('does not modify simple commands', () => {
+    expect(canonicalizeCommand('ax prove --limit 25')).toBe('ax prove --limit 25');
   });
 });

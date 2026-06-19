@@ -1,9 +1,12 @@
 import { createHash } from 'node:crypto';
 
+import picomatch from 'picomatch';
+
 import type { ExecutableToolResult } from '#/loop';
 
 import type { GuardrailContext, GuardrailMiddleware } from '../context.js';
 import { GuardrailViolationError } from '../error.js';
+import { canonicalizeCommand } from '../normalize-command.js';
 import { stableStringify } from '../telemetry.js';
 
 function parseArgs(raw: string | null): unknown {
@@ -21,19 +24,19 @@ function parseArgs(raw: string | null): unknown {
 function normalizeOutput(raw: string): string {
   return raw
     // ISO timestamps
-    .replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z?/g, '<TS>')
+    .replaceAll(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z?/g, '<TS>')
     // UUIDs (must run before Unix timestamps to avoid partial digit matching)
-    .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '<UUID>')
+    .replaceAll(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '<UUID>')
     // Unix timestamps (10-13 digits)
-    .replace(/\b\d{10,13}\b/g, '<TS>')
+    .replaceAll(/\b\d{10,13}\b/g, '<TS>')
     // Bracketed numbers like [1234] (PID-style log output)
-    .replace(/\[\d+\]/g, '[<N>]')
+    .replaceAll(/\[\d+\]/g, '[<N>]')
     // pid=1234 or pid: 1234
-    .replace(/\bpid[=:\s]+\d+/gi, 'pid=<N>')
+    .replaceAll(/\bpid[=:\s]+\d+/gi, 'pid=<N>')
     // (ID: 12345) patterns
-    .replace(/\(ID:\s*\d+\)/gi, '(ID:<N>)')
+    .replaceAll(/\(ID:\s*\d+\)/gi, '(ID:<N>)')
     // Normalize whitespace
-    .replace(/\s+/g, ' ').trim();
+    .replaceAll(/\s+/g, ' ').trim();
 }
 
 function hashObservation(result: ExecutableToolResult): string {
@@ -72,12 +75,20 @@ function checkInputOnlyPhase(
   for (const toolCall of ctx.toolCalls!) {
     const parsedArgs = parseArgs(toolCall.arguments);
     ctx.telemetry.record(toolCall.name, parsedArgs, toolCall.id);
+
+    const { repeatPolicy, maxRepeats } = getEffectivePolicy(ctx, toolCall.name, parsedArgs);
+    if (repeatPolicy === 'allow') continue;
+
     const matches = ctx.telemetry.recentMatches(
       toolCall.name,
       parsedArgs,
       ctx.config.windowSize,
     );
-    if (matches >= ctx.config.maxRepeats) {
+    if (matches >= maxRepeats) {
+      if (repeatPolicy === 'warn') {
+        console.warn(`[guardrail] Tool "${toolCall.name}" repeated ${matches} times (warn mode)`);
+        continue;
+      }
       throw makeViolation(ctx, toolCall.name, parsedArgs, matches);
     }
   }
@@ -102,6 +113,39 @@ function isDestructiveCommand(toolName: string, parsedArgs: unknown): boolean {
   return BASH_MUTATION_PATTERN.test(cmd);
 }
 
+function getEffectivePolicy(
+  ctx: GuardrailContext,
+  toolName: string,
+  parsedArgs: unknown,
+): { repeatPolicy: 'block' | 'warn' | 'allow'; maxRepeats: number } {
+  const defaultPolicy = 'block';
+  const defaultMax = ctx.config.maxRepeats;
+
+  if (!ctx.config.overrides?.length) {
+    return { repeatPolicy: defaultPolicy, maxRepeats: defaultMax };
+  }
+
+  // Extract matchable subject with semantic normalization
+  let subject = toolName;
+  if (toolName === 'Bash' && parsedArgs !== null && typeof parsedArgs === 'object') {
+    const cmd = (parsedArgs as Record<string, unknown>)['command'];
+    if (typeof cmd === 'string') subject = canonicalizeCommand(cmd);
+  }
+
+  for (const override of ctx.config.overrides) {
+    if (picomatch.isMatch(subject, override.match)) {
+      const effectivePolicy = override.repeatPolicy
+        ?? (override.behavior === 'stateless_search' ? 'allow' : defaultPolicy);
+      return {
+        repeatPolicy: effectivePolicy,
+        maxRepeats: override.maxRepeats ?? defaultMax,
+      };
+    }
+  }
+
+  return { repeatPolicy: defaultPolicy, maxRepeats: defaultMax };
+}
+
 function checkActionObservationPhase(
   ctx: GuardrailContext,
 ): GuardrailContext {
@@ -114,6 +158,9 @@ function checkActionObservationPhase(
     if (result === undefined) continue;
 
     const parsedArgs = parseArgs(toolCall.arguments);
+
+    const { repeatPolicy, maxRepeats } = getEffectivePolicy(ctx, toolCall.name, parsedArgs);
+    if (repeatPolicy === 'allow') continue;
 
     // Smart Destructive Check: invalidate prior fingerprints when a mutation command succeeds
     if (isDestructiveCommand(toolCall.name, parsedArgs) && !result.isError) {
@@ -129,7 +176,11 @@ function checkActionObservationPhase(
       outputHash,
     );
 
-    if (matches >= ctx.config.maxRepeats) {
+    if (matches >= maxRepeats) {
+      if (repeatPolicy === 'warn') {
+        console.warn(`[guardrail] Tool "${toolCall.name}" repeated ${matches} times (warn mode)`);
+        continue;
+      }
       throw makeViolation(ctx, toolCall.name, parsedArgs, matches, outputHash);
     }
   }

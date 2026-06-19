@@ -218,6 +218,45 @@ You can also switch models temporarily without touching the config file — by s
 
 In `"input-only"` mode, running `git status` three times in the last five tool calls triggers the breaker. In `"action-observation"` mode, the same command is allowed as long as its output changes each time; it trips only when both the command and its output are identical, which means the agent received no new information.
 
+### Scoped overrides
+
+The default policy applies to every tool call, but some commands legitimately need to run many times — for example, repeatedly invoking a prover or running a test suite until it passes. Scoped overrides let you relax the circuit breaker for specific commands while keeping the global policy intact.
+
+Add one or more `[[execution_guardrails.overrides]]` entries after the `[execution_guardrails]` table. Overrides are evaluated top-to-bottom; the first match wins.
+
+| Field | Type | Default | Description |
+| --- | --- | --- | --- |
+| `match` | `string` | — | **Required.** A picomatch glob pattern matched against the canonicalized command (for `Bash`) or the tool name (for all other tools) |
+| `repeat_policy` | `string` | inherits | Override the global policy for matched calls: `"block"`, `"warn"`, or `"allow"` |
+| `max_repeats` | `integer` | inherits | Override the global `max_repeats` for matched calls |
+| `behavior` | `string` | `"default"` | Set to `"stateless_search"` to treat matched calls as stateless reads — this implies `repeat_policy = "allow"` unless explicitly overridden |
+
+Command matching normalizes the raw input before comparison: `sudo`, `time`, `env`, inline environment variables (`KEY=VALUE`), path prefixes (`./`, `/usr/bin/`), and subshell wrappers (`bash -c "..."`) are stripped in a fixed-point loop. For example, `sudo ax prove --limit 25` and `AX_TARGET=backend ax prove --limit 25` both canonicalize to `ax prove --limit 25` and match the same override pattern.
+
+```toml
+[execution_guardrails]
+enabled = true
+max_repeats = 3
+window_size = 5
+detection_mode = "input-only"
+
+# Always allow ax prove — it needs many invocations to explore proof paths
+[[execution_guardrails.overrides]]
+match = "ax prove *"
+repeat_policy = "allow"
+
+# Treat cargo test as stateless — allowed by default, but still respects explicit overrides
+[[execution_guardrails.overrides]]
+match = "cargo test *"
+behavior = "stateless_search"
+
+# Warn after 10, block after 20 — custom threshold for a long-running build
+[[execution_guardrails.overrides]]
+match = "make *"
+repeat_policy = "warn"
+max_repeats = 20
+```
+
 ## `experimental`
 
 `experimental` stores persistent overrides for experimental-feature flags. Currently, `micro_compaction` is the only user-facing entry and defaults to `true`; set it to `false` only when you need to disable automatic trimming of older large tool results.
