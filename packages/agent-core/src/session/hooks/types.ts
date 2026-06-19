@@ -26,6 +26,7 @@ export interface HookDef {
   readonly matcher?: string;
   readonly command: string;
   readonly timeout?: number;
+  readonly scope?: string;
 }
 
 export interface HookResult {

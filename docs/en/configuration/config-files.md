@@ -18,6 +18,31 @@ The config file path then becomes `$KIMI_CODE_HOME/config.toml`. Regardless of w
 TOML field names always use snake_case, for example `default_model` and `max_context_size`. If a key contains `.`, you must quote it — for example `[models."gpt-4.1"]` — otherwise TOML treats `.` as a nested table separator.
 :::
 
+## Project-level configuration
+
+In addition to the global `~/.kimi-code/config.toml`, Kimi Code loads a per-project config file from `<project-root>/.kimi-code/config.toml` when one exists. The project root is detected by walking up from the current working directory until a `.git` directory is found.
+
+```text
+my-project/
+├── .git/
+├── .kimi-code/
+│   └── config.toml    ← project-level config
+└── src/
+```
+
+Project-level config is **merged** into the global config at session creation time:
+
+| Section | Merge strategy |
+|---------|---------------|
+| `hooks`, `permission.rules` | **Concatenated** — project hooks/rules are appended to global ones |
+| `providers`, `models` | **Override by key** — project entries override same-name global entries |
+| `thinking`, `background`, etc. | **Deep merge** — project fields override matching global fields |
+| `default_model`, `telemetry`, etc. | **Override** — project value wins |
+
+::: warning
+Project-level `hooks` are concatenated, not replaced. If a global hook and a project hook have the same `command`, the global hook takes precedence (deduplication by command string).
+:::
+
 ## Complete example
 
 The following example covers the most commonly used configuration fields. You can copy it and adjust as needed:

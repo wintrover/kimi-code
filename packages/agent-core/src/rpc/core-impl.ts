@@ -15,9 +15,11 @@ import {
   ensureKimiHome,
   loadRuntimeConfigSafe,
   mergeConfigPatch,
+  mergeConfigs,
   readConfigFileForUpdate,
   resolveConfigPath,
   resolveKimiHome,
+  resolveProjectConfigPath,
   writeConfigFile,
   type KimiConfig,
   type McpServerConfig,
@@ -204,6 +206,7 @@ export class KimiCore implements PromisableMethods<CoreAPI> {
     const options = input;
     const workDir = requiredWorkDir('createSession', options.workDir);
     const config = this.reloadProviderManager();
+    const sessionConfig = this.resolveConfigForSession(workDir);
     const id = options.id ?? createSessionId();
     const thinkingLevel = resolveThinkingLevel(options.thinking, config);
     const permissionMode = options.permission ?? config.defaultPermissionMode;
@@ -241,8 +244,8 @@ export class KimiCore implements PromisableMethods<CoreAPI> {
       rpc: proxyWithExtraPayload(await this.sdk, { sessionId: summary.id }),
       providerManager: this.resolveProviderManager(summary.id),
       background: config.background,
-      hooks: config.hooks,
-      permissionRules: config.permission?.rules,
+      hooks: sessionConfig.hooks,
+      permissionRules: sessionConfig.permission?.rules,
       skills: this.resolveSessionSkillConfig(config),
       mcpConfig,
       experimentalFlags: this.experimentalFlags,
@@ -320,6 +323,7 @@ export class KimiCore implements PromisableMethods<CoreAPI> {
     }
 
     const config = this.reloadProviderManager();
+    const sessionConfig = this.resolveConfigForSession(summary.workDir);
     const baseMcpConfig = await resolveSessionMcpConfig({
       cwd: summary.workDir,
       homeDir: this.homeDir,
@@ -342,8 +346,8 @@ export class KimiCore implements PromisableMethods<CoreAPI> {
       rpc: proxyWithExtraPayload(await this.sdk, { sessionId: summary.id }),
       providerManager: this.resolveProviderManager(summary.id),
       background: config.background,
-      hooks: config.hooks,
-      permissionRules: config.permission?.rules,
+      hooks: sessionConfig.hooks,
+      permissionRules: sessionConfig.permission?.rules,
       skills: this.resolveSessionSkillConfig(config),
       mcpConfig,
       experimentalFlags: this.experimentalFlags,
@@ -913,6 +917,33 @@ export class KimiCore implements PromisableMethods<CoreAPI> {
   private clearRuntimeCache(): void {
     if (this.runtimeOverride !== undefined) return;
     this.runtime = undefined;
+  }
+
+  /**
+   * Return the global config merged with any project-level
+   * `.kimi-code/config.toml` found by walking up from `workDir`.
+   * Arrays (hooks, permission.rules) are concatenated; everything else
+   * follows the normal override-by-source-value rule.
+   */
+  private resolveConfigForSession(workDir: string): KimiConfig {
+    const projectConfigPath = resolveProjectConfigPath(workDir);
+    if (projectConfigPath === undefined) return this.config;
+    const loaded = loadRuntimeConfigSafe(projectConfigPath);
+    if (loaded.fileError !== undefined || loaded.config === undefined) {
+      log.warn('project config.toml load failed; using global config only', {
+        path: projectConfigPath,
+        error: loaded.fileError?.message,
+      });
+      return this.config;
+    }
+    if (loaded.fileWarnings.length > 0) {
+      log.warn('project config.toml has warnings', {
+        path: projectConfigPath,
+        warnings: loaded.fileWarnings,
+      });
+    }
+    log.info('merged project-level config.toml', { path: projectConfigPath });
+    return mergeConfigs(this.config, loaded.config);
   }
 
   private async refreshSessionRuntimeConfig(

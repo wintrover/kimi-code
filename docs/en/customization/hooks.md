@@ -39,7 +39,7 @@ Save the config, start a new session, and a notification will appear the next ti
 
 ## Configuration
 
-All hook rules are written in the `[[hooks]]` array in `~/.kimi-code/config.toml`, where each entry is one rule:
+All hook rules are written in the `[[hooks]]` array in `~/.kimi-code/config.toml` (global) or `<project-root>/.kimi-code/config.toml` (project-level). Each entry is one rule:
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -47,12 +47,27 @@ All hook rules are written in the `[[hooks]]` array in `~/.kimi-code/config.toml
 | `matcher` | `string` | No | A regular expression to filter event targets; if omitted, matches all |
 | `command` | `string` | Yes | The shell command to run when triggered |
 | `timeout` | `integer` | No | Timeout in seconds, range 1–600; defaults to 30 seconds |
+| `scope` | `string` | No | A regular expression matched against the session working directory; if omitted, the hook fires for all sessions |
 
-`[[hooks]]` only allows these four fields; extra fields will cause the config file to fail to load.
+`[[hooks]]` only allows these five fields; extra fields will cause the config file to fail to load.
 
 **When multiple rules match the same event**, all matching hooks run in parallel; multiple rules with identical `command` values run only once.
 
 The working directory for hook commands is the current session's project directory. On non-Windows platforms, hook processes are placed in a separate process group; on timeout, a signal is sent first to give the process a chance to clean up, then it is forcibly terminated.
+
+### Scoped hooks
+
+Use the `scope` field to restrict a hook to a specific project directory. The value is a regular expression tested against the session's working directory. This is useful for project-specific hooks that should not fire in other projects:
+
+```toml
+# Only fires when the session cwd is inside the Axiom project
+[[hooks]]
+event = "UserPromptSubmit"
+matcher = ".*"
+command = "./bin/semantic_grounding_hook"
+timeout = 3
+scope = ".*/Axiom_CLI/Axiom"
+```
 
 ### Event Data Format
 

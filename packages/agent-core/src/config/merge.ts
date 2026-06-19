@@ -14,6 +14,45 @@ export function mergeConfigPatch(config: KimiConfig, patch: KimiConfigPatch): Ki
   return validateConfig(merged);
 }
 
+/**
+ * Merge a project-level KimiConfig into the global KimiConfig.
+ *
+ * Merge strategy:
+ * - **Arrays** (`hooks`, `permission.rules`): concatenate (project appends to global)
+ * - **Records** (`providers`, `models`): spread/override by key
+ * - **Objects** (`thinking`, `background`, etc.): deep merge
+ * - **Scalars** (`defaultModel`, etc.): project overrides global
+ */
+export function mergeConfigs(global: KimiConfig, project: KimiConfig): KimiConfig {
+  const merged = configAwareMerge(
+    global as unknown as Record<string, unknown>,
+    project as unknown as Record<string, unknown>,
+  );
+  return validateConfig(merged);
+}
+
+/** Keys whose values are arrays that should be concatenated, not replaced. */
+const CONCAT_KEYS = new Set(['hooks', 'rules', 'mcpAutoApprove']);
+
+function configAwareMerge(
+  target: Record<string, unknown>,
+  source: Record<string, unknown>,
+): Record<string, unknown> {
+  const result = { ...target };
+  for (const [key, sourceValue] of Object.entries(source)) {
+    if (sourceValue === undefined) continue;
+    const targetValue = result[key];
+    if (CONCAT_KEYS.has(key) && Array.isArray(targetValue) && Array.isArray(sourceValue)) {
+      result[key] = [...targetValue, ...sourceValue];
+    } else if (isPlainObject(targetValue) && isPlainObject(sourceValue)) {
+      result[key] = configAwareMerge(targetValue, sourceValue);
+    } else {
+      result[key] = sourceValue;
+    }
+  }
+  return result;
+}
+
 function parsePatch(patch: KimiConfigPatch): KimiConfigPatch {
   try {
     return stripUndefinedDeep(KimiConfigPatchSchema.parse(patch)) as KimiConfigPatch;

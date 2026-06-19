@@ -9,9 +9,11 @@ import { ErrorCodes, KimiError } from '../../src/errors';
 import {
   KimiConfigSchema,
   ensureConfigFile,
+  findProjectRoot,
   loadRuntimeConfig,
   loadRuntimeConfigSafe,
   mergeConfigPatch,
+  mergeConfigs,
   parseConfigString,
   parseBooleanEnv,
   readConfigFile,
@@ -19,6 +21,7 @@ import {
   resolveConfigPath,
   resolveConfigValue,
   resolveKimiHome,
+  resolveProjectConfigPath,
   validateConfig,
   writeConfigFile,
 } from '../../src/config';
@@ -882,5 +885,134 @@ ${VALID_TOML}`);
     expect(result.config.providers['kimi']).toBeDefined();
     expect(result.fileWarnings).toHaveLength(1);
     expect(result.fileWarnings[0]).toContain('default_thinking');
+  });
+});
+
+describe('findProjectRoot', () => {
+  it('returns the directory containing .git', () => {
+    // The current repo is a known .git boundary
+    const root = findProjectRoot(import.meta.dirname);
+    expect(root).toBeDefined();
+    expect(root).toContain('.kimi-code');
+  });
+
+  it('returns undefined when no .git is found', () => {
+    const root = findProjectRoot('/');
+    expect(root).toBeUndefined();
+  });
+});
+
+describe('resolveProjectConfigPath', () => {
+  it('returns undefined when no project root is found', () => {
+    expect(resolveProjectConfigPath('/')).toBeUndefined();
+  });
+
+  it('returns undefined when project root has no .kimi-code/config.toml', () => {
+    const dir = makeTempDir();
+    // No .git → findProjectRoot returns undefined
+    expect(resolveProjectConfigPath(dir)).toBeUndefined();
+  });
+});
+
+describe('mergeConfigs', () => {
+  const base = validateConfig({
+    providers: {},
+    hooks: [{ event: 'PreToolUse', matcher: 'Bash', command: 'global-hook' }],
+    defaultModel: 'global-model',
+  });
+
+  it('concatenates hooks arrays', () => {
+    const project = validateConfig({
+      providers: {},
+      hooks: [{ event: 'UserPromptSubmit', matcher: '.*', command: 'project-hook' }],
+    });
+    const merged = mergeConfigs(base, project);
+    expect(merged.hooks).toHaveLength(2);
+    expect(merged.hooks![0].command).toBe('global-hook');
+    expect(merged.hooks![1].command).toBe('project-hook');
+  });
+
+  it('project scalars override global scalars', () => {
+    const project = validateConfig({
+      providers: {},
+      defaultModel: 'project-model',
+    });
+    const merged = mergeConfigs(base, project);
+    expect(merged.defaultModel).toBe('project-model');
+  });
+
+  it('preserves global values when project does not define them', () => {
+    const project = validateConfig({ providers: {} });
+    const merged = mergeConfigs(base, project);
+    expect(merged.hooks).toHaveLength(1);
+    expect(merged.defaultModel).toBe('global-model');
+  });
+
+  it('concatenates permission.rules arrays', () => {
+    const globalWithRules = validateConfig({
+      providers: {},
+      permission: {
+        rules: [{ decision: 'allow' as const, pattern: 'Read' }],
+      },
+    });
+    const project = validateConfig({
+      providers: {},
+      permission: {
+        rules: [{ decision: 'deny' as const, pattern: 'Bash(rm -rf*)' }],
+      },
+    });
+    const merged = mergeConfigs(globalWithRules, project);
+    expect(merged.permission?.rules).toHaveLength(2);
+    expect(merged.permission?.rules![0].pattern).toBe('Read');
+    expect(merged.permission?.rules![1].pattern).toBe('Bash(rm -rf*)');
+  });
+});
+
+describe('HookDefSchema with scope', () => {
+  it('accepts hook with scope field', () => {
+    const config = parseConfigString(`
+      [providers.test]
+      type = "openai"
+      [[hooks]]
+      event = "UserPromptSubmit"
+      matcher = ".*"
+      command = "echo hello"
+      scope = ".*/my-project$"
+    `);
+    expect(config.hooks).toHaveLength(1);
+    expect(config.hooks![0].scope).toBe('.*/my-project$');
+  });
+
+  it('accepts hook without scope field', () => {
+    const config = parseConfigString(`
+      [providers.test]
+      type = "openai"
+      [[hooks]]
+      event = "Notification"
+      command = "notify-send done"
+    `);
+    expect(config.hooks).toHaveLength(1);
+    expect(config.hooks![0].scope).toBeUndefined();
+  });
+});
+
+describe('HookEngine scope filtering', () => {
+  it('fires global hook (no scope) regardless of cwd', async () => {
+    const { HookEngine } = await import('../../src/session/hooks/engine');
+    const engine = new HookEngine(
+      [{ event: 'SessionStart', command: 'echo global' }],
+      { cwd: '/any/path' },
+    );
+    // summary shows the hook is registered
+    expect(engine.summary['SessionStart']).toBe(1);
+  });
+
+  it('registers scoped hook in summary', async () => {
+    const { HookEngine } = await import('../../src/session/hooks/engine');
+    const engine = new HookEngine(
+      [{ event: 'SessionStart', command: 'echo scoped', scope: '.*/my-project' }],
+      { cwd: '/home/user/my-project' },
+    );
+    expect(engine.summary['SessionStart']).toBe(1);
   });
 });

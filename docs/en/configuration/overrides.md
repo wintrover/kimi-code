@@ -21,7 +21,8 @@ Environment variables fall into three categories by function and cannot be colla
 For ordinary runtime parameters such as model alias, Plan mode, yolo mode, and Skills directories, priority from highest to lowest is:
 
 1. **Command-line options** (`-m`, `--plan`, `--yolo`, etc.): apply only to the current startup
-2. **User config file** (`~/.kimi-code/config.toml`): stores long-term preferences
+2. **Project config file** (`<project-root>/.kimi-code/config.toml`): per-project overrides, merged at session creation — see [Project-level configuration](./config-files.md#project-level-configuration)
+3. **User config file** (`~/.kimi-code/config.toml`): stores long-term preferences
 
 A small number of environment variables explicitly override specific config file fields — for example, `KIMI_CODE_BACKGROUND_KEEP_ALIVE_ON_EXIT` has higher priority than `[background].keep_alive_on_exit`. These exceptions are noted in [Environment variables](./env-vars.md) and in the relevant field descriptions in [Configuration files](./config-files.md).
 
@@ -29,7 +30,7 @@ A small number of environment variables explicitly override specific config file
 **Ordinary runtime parameters do not fall back to shell environment variables.** Provider `api_key` / `base_url` are read only from `config.toml` (including the `[providers.<name>.env]` sub-table) and do not fall back to `export`-ed shell variables. The only exception is the explicit `KIMI_MODEL_*` channel — see [Define a model from environment variables](./env-vars.md#define-a-model-from-environment-variables-kimi-model).
 :::
 
-The CLI currently reads a single user-level config file and has no project-level config file mechanism. To isolate config between different projects, point `KIMI_CODE_HOME` at different data directories — see [Common scenarios](#common-scenarios) below.
+The CLI reads both a user-level config file (`~/.kimi-code/config.toml`) and an optional project-level config file (`<project-root>/.kimi-code/config.toml`). Project-level hooks and permission rules are appended to the global ones; other sections override or deep-merge with the global config. See [Project-level configuration](./config-files.md#project-level-configuration) for details.
 
 ## Provider credentials
 

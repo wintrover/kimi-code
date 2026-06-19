@@ -98,9 +98,11 @@ export class HookEngine {
   private matchingHooks(event: string, matcherValue: string): HookDef[] {
     const seenCommands = new Set<string>();
     const matched: HookDef[] = [];
+    const cwd = this.options.cwd ?? '';
 
     for (const hook of this.byEvent.get(event) ?? []) {
       if (!matches(hook.matcher ?? '', matcherValue)) continue;
+      if (!matchesScope(hook.scope, cwd)) continue;
       if (seenCommands.has(hook.command)) continue;
       seenCommands.add(hook.command);
       matched.push(hook);
@@ -132,6 +134,16 @@ function matches(pattern: string, value: string): boolean {
   if (pattern.length === 0) return true;
   try {
     return new RegExp(pattern).test(value);
+  } catch {
+    return false;
+  }
+}
+
+function matchesScope(scope: string | undefined, cwd: string): boolean {
+  if (scope === undefined) return true;
+  if (cwd.length === 0) return false;
+  try {
+    return new RegExp(scope).test(cwd);
   } catch {
     return false;
   }
