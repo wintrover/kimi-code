@@ -22,6 +22,10 @@ export function canonicalizeCommand(cmd: string): string {
       '',
     );
 
+    // 1b. Strip export / declare -x keyword prefixes
+    current = current.replace(/^export\s+/i, '');
+    current = current.replace(/^declare\s+-x\s+/i, '');
+
     // 2. Strip one inline environment variable (KEY=VALUE)
     //    Applied per-iteration so fixed-point handles multiple vars
     current = current.replace(/^[A-Za-z_][A-Za-z0-9_]*=\S+\s+/, '');

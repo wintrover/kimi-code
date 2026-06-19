@@ -607,6 +607,7 @@ export class TurnFlow {
           log: this.agent.log,
           maxSteps: loopControl?.maxStepsPerTurn,
           maxRetryAttempts: loopControl?.maxRetriesPerStep,
+          env: this.agent.tools.envStore.snapshot.env,
           recordStepUsage: async (usage) => {
             try {
               const snapshot = await this.agent.goal.recordTokenUsage(grandTotal(usage));

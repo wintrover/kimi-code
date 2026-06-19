@@ -40,6 +40,7 @@ export interface ExecuteLoopStepDeps {
   readonly log?: Logger | undefined;
   readonly currentStep: number;
   readonly maxRetryAttempts?: number;
+  readonly env?: Readonly<Record<string, string>> | undefined;
   readonly recordUsage: (usage: TokenUsage) => RecordStepUsageResult | void | Promise<RecordStepUsageResult | void>;
 }
 
@@ -58,6 +59,7 @@ export async function executeLoopStep(deps: ExecuteLoopStepDeps): Promise<{
     log,
     currentStep,
     maxRetryAttempts,
+    env,
     recordUsage,
   } = deps;
 
@@ -90,6 +92,7 @@ export async function executeLoopStep(deps: ExecuteLoopStepDeps): Promise<{
     turnId,
     currentStep,
     stepUuid,
+    env,
   };
 
   await dispatchEvent({

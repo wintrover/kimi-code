@@ -42,6 +42,7 @@ import {
   sanitizeOpenAIResponsesCallId,
   type ToolCallIdPolicy,
 } from './tool-call-id';
+import { transformToStrictSchema } from './openai-strict-schema';
 
 /**
  * Normalize the Responses API status / incomplete_details into the unified
@@ -581,12 +582,15 @@ function convertMessage(
 }
 
 function convertTool(tool: Tool): ResponseToolParam {
+  const isStrict = tool.strict ?? false;
   return {
     type: 'function',
     name: tool.name,
     description: tool.description,
-    parameters: tool.parameters,
-    strict: false,
+    parameters: isStrict
+      ? transformToStrictSchema(tool.parameters)
+      : tool.parameters,
+    strict: isStrict,
   };
 }
 

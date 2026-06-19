@@ -43,7 +43,7 @@ export const ReadInputSchema = aliasedObject(
         `The number of lines to read; the tool also applies its internal cap. Omit to read up to the internal cap of ${String(MAX_LINES)} lines.`,
       ),
   },
-  { path: ['file_path'], line_offset: ['offset'] },
+  { path: ['file_path'], line_offset: ['offset'], n_lines: ['limit'] },
 );
 
 export const ReadOutputSchema = z.object({

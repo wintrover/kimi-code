@@ -994,3 +994,24 @@ describe('ReadTool file_path alias normalization', () => {
     expect(result.output).not.toContain('1\ta');
   });
 });
+
+describe('ReadTool limit alias normalization', () => {
+  it('limit alias normalizes to n_lines', () => {
+    const result = ReadInputSchema.normalizeInput({ path: 'test.txt', limit: 5 });
+    expect(result.n_lines).toBe(5);
+    expect(result).not.toHaveProperty('limit');
+  });
+
+  it('canonical n_lines wins over limit alias when both are provided', () => {
+    const result = ReadInputSchema.normalizeInput({ path: 'test.txt', n_lines: 10, limit: 20 });
+    expect(result.n_lines).toBe(10);
+    expect(result).not.toHaveProperty('limit');
+  });
+
+  it('AJV validator accepts limit as an additional property', () => {
+    const tool = toolWithContent('');
+    const validator = compileToolArgsValidator(tool.parameters as Record<string, unknown>);
+    const error = validateToolArgs(validator, { path: 'test.txt', limit: 5 } as never);
+    expect(error).toBeNull();
+  });
+});

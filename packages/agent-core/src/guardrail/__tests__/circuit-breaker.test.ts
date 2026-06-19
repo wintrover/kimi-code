@@ -716,4 +716,20 @@ describe('canonicalizeCommand', () => {
   it('does not modify simple commands', () => {
     expect(canonicalizeCommand('ax prove --limit 25')).toBe('ax prove --limit 25');
   });
+
+  it('strips export prefix', () => {
+    expect(canonicalizeCommand('export PATH="/foo:$PATH"')).toBe('PATH="/foo:$PATH"');
+  });
+
+  it('strips export prefix and inline env var', () => {
+    expect(canonicalizeCommand('export NODE_ENV=production npm start')).toBe('npm start');
+  });
+
+  it('strips declare -x prefix', () => {
+    expect(canonicalizeCommand('declare -x HOME="/home/user"')).toBe('HOME="/home/user"');
+  });
+
+  it('handles export with sudo', () => {
+    expect(canonicalizeCommand('sudo export PATH="/foo:$PATH"')).toBe('PATH="/foo:$PATH"');
+  });
 });

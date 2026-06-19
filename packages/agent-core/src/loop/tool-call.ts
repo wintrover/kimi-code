@@ -71,6 +71,8 @@ export interface ToolCallStepContext {
   readonly turnId: string;
   readonly currentStep: number;
   readonly stepUuid: string;
+  /** Agent environment snapshot to pass to tool executions. */
+  readonly env?: Readonly<Record<string, string>> | undefined;
 }
 
 interface ToolCallBatchContext extends ToolCallStepContext {
@@ -606,6 +608,7 @@ async function executeTool(
     toolCallId: toolCall.id,
     metadata,
     signal,
+    env: step.env,
     onUpdate: (update) => {
       if (signal.aborted) return;
       dispatchEvent({

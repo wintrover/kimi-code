@@ -51,6 +51,8 @@ export class ToolManager {
   /** Glob patterns (e.g. `mcp__*`, `mcp__github__*`) gating which MCP tools the profile exposes. */
   private mcpAccessPatterns: string[] = [];
   protected readonly store: Partial<ToolStoreData> = {};
+  /** Agent-level environment state store, shared with env tools and BashTool. */
+  readonly envStore = new b.AgentEnvStore();
   private mcpToolStatusUnsubscribe: (() => void) | undefined;
 
   constructor(protected readonly agent: Agent) {
@@ -429,6 +431,9 @@ export class ToolManager {
         goalToolsEnabled && new b.UpdateGoalTool(this.agent),
         this.agent.rpc?.requestQuestion && new b.AskUserQuestionTool(this.agent),
         new b.TodoListTool(this.toolStore),
+        new b.SetEnvTool(this.envStore),
+        new b.GetEnvTool(this.envStore),
+        new b.ListEnvTool(this.envStore),
         new b.TaskListTool(background),
         new b.TaskOutputTool(background),
         new b.TaskStopTool(background),

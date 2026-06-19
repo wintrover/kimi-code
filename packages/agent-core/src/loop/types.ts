@@ -111,6 +111,8 @@ export interface ExecutableToolContext {
   readonly metadata?: unknown;
   readonly signal: AbortSignal;
   readonly onUpdate?: ((update: ToolUpdate) => void) | undefined;
+  /** Agent environment snapshot (read-only). Tools cannot modify this directly. */
+  readonly env?: Readonly<Record<string, string>> | undefined;
 }
 
 export interface RunnableToolExecution {

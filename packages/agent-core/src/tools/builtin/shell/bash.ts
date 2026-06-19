@@ -181,11 +181,15 @@ export class BashTool implements BuiltinTool<BashInput> {
       },
       approvalRule: literalRulePattern(this.name, args.command),
       matchesRule: (ruleArgs) => matchesGlobRuleSubject(ruleArgs, args.command),
-      execute: ({ signal, onUpdate }) => this.execution(args, signal, onUpdate),
+      execute: ({ signal, onUpdate, env }) => this.execution(args, signal, onUpdate, env),
     };
   }
 
-  private spawn(effectiveCwd: string, command: string): Promise<KaosProcess> {
+  private spawn(
+    effectiveCwd: string,
+    command: string,
+    ctxEnv?: Readonly<Record<string, string>>,
+  ): Promise<KaosProcess> {
     const shellCwd = this.isWindowsBash ? windowsPathToPosixPath(effectiveCwd) : effectiveCwd;
     const shellArgs = [
       this.kaos.osEnv.shellPath,
@@ -203,10 +207,10 @@ export class BashTool implements BuiltinTool<BashInput> {
       SHELL: this.kaos.osEnv.shellPath,
     };
 
-    // Merge ambient env + noninteractive knobs so tools like git / node
-    // don't open a pager and paints don't colour the stream.
+    // Merge: process.env < ctxEnv (agent env snapshot) < noninteractiveEnv
     const mergedEnv: Record<string, string> = {
       ...(process.env as Record<string, string>),
+      ...ctxEnv,
       ...noninteractiveEnv,
     };
     return this.kaos.execWithEnv(shellArgs, mergedEnv);
@@ -216,6 +220,7 @@ export class BashTool implements BuiltinTool<BashInput> {
     args: BashInput,
     signal: AbortSignal,
     onUpdate?: ((update: ToolUpdate) => void) | undefined,
+    ctxEnv?: Readonly<Record<string, string>>,
   ): Promise<ExecutableToolResult> {
     if (signal.aborted) {
       return { isError: true, output: 'Aborted before command started' };
@@ -232,7 +237,7 @@ export class BashTool implements BuiltinTool<BashInput> {
             'Background execution is not available for this agent because TaskOutput and TaskStop are not enabled.',
         };
       }
-      return this.executeInBackground(args);
+      return this.executeInBackground(args, ctxEnv);
     }
 
     const timeoutMs = normalizeTimeoutMs(args.timeout, false);
@@ -241,7 +246,7 @@ export class BashTool implements BuiltinTool<BashInput> {
     const command = this.isWindowsBash ? rewriteWindowsNullRedirect(args.command) : args.command;
     try {
       const effectiveCwd = args.cwd ?? this.cwd;
-      proc = await this.spawn(effectiveCwd, command);
+      proc = await this.spawn(effectiveCwd, command, ctxEnv);
     } catch (error) {
       return {
         isError: true,
@@ -355,7 +360,10 @@ export class BashTool implements BuiltinTool<BashInput> {
     }
   }
 
-  private async executeInBackground(args: BashInput): Promise<ExecutableToolResult> {
+  private async executeInBackground(
+    args: BashInput,
+    ctxEnv?: Readonly<Record<string, string>>,
+  ): Promise<ExecutableToolResult> {
     if (!this.backgroundManager) {
       return {
         isError: true,
@@ -377,7 +385,7 @@ export class BashTool implements BuiltinTool<BashInput> {
     const command = this.isWindowsBash ? rewriteWindowsNullRedirect(args.command) : args.command;
     try {
       const effectiveCwd = args.cwd ?? this.cwd;
-      proc = await this.spawn(effectiveCwd, command);
+      proc = await this.spawn(effectiveCwd, command, ctxEnv);
     } catch (error) {
       return {
         isError: true,

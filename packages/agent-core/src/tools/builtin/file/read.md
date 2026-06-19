@@ -7,6 +7,7 @@ When you need several files, prefer to read them in parallel: emit multiple `Rea
 - Relative paths resolve against the working directory; a path outside the working directory must be absolute.
 - Returns up to {{ MAX_LINES }} lines or {{ MAX_BYTES_KB }} KB per call, whichever comes first; lines longer than {{ MAX_LINE_LENGTH }} chars are truncated mid-line.
 - Page larger files with `line_offset` (1-based start line) and `n_lines`. Omit `n_lines` to read up to the {{ MAX_LINES }}-line cap.
+- `line_offset` and `n_lines` also accept the shorter aliases `offset` and `limit`; the tool normalizes them automatically.
 - Sensitive files (`.env` files, credential stores, SSH keys, and similar secrets) are refused to protect secrets; do not attempt to read them.
 - Only UTF-8 text files can be read. Non-UTF-8 encodings, binary files, and files containing NUL bytes are refused; use `ReadMediaFile` for images or video, and Bash or an MCP tool for other binary formats.
 - Negative line_offset reads from the end of the file (for example, -100 reads the last 100 lines); the absolute value cannot exceed {{ MAX_LINES }}.

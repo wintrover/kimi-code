@@ -12,4 +12,6 @@ export interface Tool {
   description: string;
   /** JSON Schema describing the tool's parameters. */
   parameters: Record<string, unknown>;
+  /** Enables strict schema adherence for providers that support it (e.g., OpenAI Responses API). */
+  strict?: boolean;
 }
