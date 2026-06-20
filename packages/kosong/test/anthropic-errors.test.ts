@@ -104,6 +104,28 @@ describe('convertAnthropicError', () => {
     expect(result).toBeInstanceOf(ChatProviderError);
     expect(result.message).toContain('string error');
   });
+
+  it('undici TypeError("terminated") -> retryable APIConnectionError', () => {
+    const err = new TypeError('terminated');
+    const result = convertAnthropicError(err);
+    expect(result).toBeInstanceOf(APIConnectionError);
+    expect(result.message).toBe('terminated');
+  });
+
+  it('ECONNRESET Error -> retryable APIConnectionError', () => {
+    const result = convertAnthropicError(new Error('read ECONNRESET'));
+    expect(result).toBeInstanceOf(APIConnectionError);
+  });
+
+  it('socket hang up Error -> retryable APIConnectionError', () => {
+    const result = convertAnthropicError(new Error('socket hang up'));
+    expect(result).toBeInstanceOf(APIConnectionError);
+  });
+
+  it('timeout keyword Error -> retryable APITimeoutError', () => {
+    const result = convertAnthropicError(new Error('connection timed out'));
+    expect(result).toBeInstanceOf(APITimeoutError);
+  });
 });
 describe('non-stream error propagation', () => {
   function createNonStreamProvider(): AnthropicChatProvider {

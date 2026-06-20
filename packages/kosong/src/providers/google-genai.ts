@@ -1,10 +1,10 @@
 import type { ModelCapability } from '#/capability';
 import {
   APIConnectionError,
-  APITimeoutError,
   ChatProviderError,
   normalizeAPIStatusError,
 } from '#/errors';
+import { classifyTransportError } from '#/providers/error-patterns';
 import type { Message, StreamedMessagePart, ToolCall } from '#/message';
 import type {
   ChatProvider,
@@ -634,9 +634,6 @@ export class GoogleGenAIStreamedMessage implements StreamedMessage {
     }
   }
 }
-const NETWORK_RE = /network|connection|connect|disconnect|fetch failed/i;
-const TIMEOUT_RE = /timed?\s*out|timeout|deadline/i;
-
 /**
  * Convert a Google GenAI SDK error (or raw Error) to a kosong `ChatProviderError`.
  */
@@ -647,12 +644,9 @@ export function convertGoogleGenAIError(error: unknown): ChatProviderError {
   }
   if (error instanceof Error) {
     const msg = error.message;
-    // Timeout takes priority over network (a timeout is also a connection issue)
-    if (TIMEOUT_RE.test(msg)) {
-      return new APITimeoutError(msg);
-    }
-    // Network / fetch errors (e.g. TypeError: fetch failed)
-    if (NETWORK_RE.test(msg) || (error instanceof TypeError && msg.includes('fetch'))) {
+    // Defense-in-depth: TypeError with 'fetch' covers edge cases where
+    // the message wording doesn't match the shared NETWORK_RE patterns.
+    if (error instanceof TypeError && msg.includes('fetch')) {
       return new APIConnectionError(msg);
     }
     // Try to extract status code from unknown error shapes
@@ -660,7 +654,8 @@ export function convertGoogleGenAIError(error: unknown): ChatProviderError {
     if (typeof statusCode === 'number') {
       return normalizeAPIStatusError(statusCode, msg);
     }
-    return new ChatProviderError(`GoogleGenAI error: ${msg}`);
+    // Delegate timeout/network/plain-error classification to the shared helper
+    return classifyTransportError(msg);
   }
   return new ChatProviderError(`GoogleGenAI error: ${String(error)}`);
 }

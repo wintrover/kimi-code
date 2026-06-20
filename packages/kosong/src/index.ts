@@ -63,11 +63,13 @@ export {
   APIContextOverflowError,
   APIEmptyResponseError,
   APIProviderRateLimitError,
+  APIProviderSafetyError,
   APIStatusError,
   APITimeoutError,
   ChatProviderError,
   isContextOverflowStatusError,
   isProviderRateLimitError,
+  isProviderSafetyError,
   isRetryableGenerateError,
 } from './errors';
 

@@ -1,6 +1,7 @@
 import {
   APIConnectionError,
   APIEmptyResponseError,
+  APIProviderSafetyError,
   APIStatusError,
   APITimeoutError,
   ChatProviderError,
@@ -72,6 +73,19 @@ export function toKimiErrorPayload(error: unknown): KimiErrorPayload {
       name: error.name,
       details: error.details,
       retryable: KIMI_ERROR_INFO[error.code].retryable,
+    };
+  }
+
+  if (error instanceof APIProviderSafetyError) {
+    return {
+      code: ErrorCodes.PROVIDER_SAFETY_TRIGGERED,
+      message: error.message,
+      name: error.name,
+      details: {
+        statusCode: error.statusCode,
+        requestId: error.requestId,
+      },
+      retryable: KIMI_ERROR_INFO[ErrorCodes.PROVIDER_SAFETY_TRIGGERED].retryable,
     };
   }
 

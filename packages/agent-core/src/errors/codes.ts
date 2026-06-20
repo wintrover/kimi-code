@@ -53,6 +53,7 @@ export const ErrorCodes = {
   PROVIDER_RATE_LIMIT: 'provider.rate_limit',
   PROVIDER_AUTH_ERROR: 'provider.auth_error',
   PROVIDER_CONNECTION_ERROR: 'provider.connection_error',
+  PROVIDER_SAFETY_TRIGGERED: 'provider.safety_triggered',
 
   SKILL_NOT_FOUND: 'skill.not_found',
   SKILL_TYPE_UNSUPPORTED: 'skill.type_unsupported',
@@ -333,6 +334,12 @@ export const KIMI_ERROR_INFO = {
     retryable: true,
     public: true,
     action: 'Check network connectivity and retry.',
+  },
+  'provider.safety_triggered': {
+    title: 'Provider safety filter triggered',
+    retryable: true,
+    public: true,
+    action: 'The provider rejected the request due to safety filtering. Context self-healing will attempt automatic recovery.',
   },
 
   'skill.not_found': {

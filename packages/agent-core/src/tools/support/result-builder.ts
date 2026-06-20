@@ -21,6 +21,7 @@ export type ExecutableToolResultBuilderResult = (
   readonly message: string;
   readonly truncated: boolean;
   readonly brief?: string;
+  readonly exitReason?: 'timeout' | 'signal' | 'normal';
 };
 
 export class ToolResultBuilder {
@@ -93,7 +94,7 @@ export class ToolResultBuilder {
     return charsWritten;
   }
 
-  ok(message = '', options: { readonly brief?: string } = {}): ExecutableToolResultBuilderResult {
+  ok(message = '', options: { readonly brief?: string; readonly exitReason?: 'timeout' | 'signal' | 'normal' } = {}): ExecutableToolResultBuilderResult {
     let finalMessage = message;
     if (finalMessage.length > 0 && !finalMessage.endsWith('.')) {
       finalMessage += '.';
@@ -118,12 +119,13 @@ export class ToolResultBuilder {
       message: finalMessage,
       truncated: this.truncationHappened,
       brief: options.brief,
+      exitReason: options.exitReason,
     };
   }
 
   error(
     message: string,
-    options: { readonly brief?: string } = {},
+    options: { readonly brief?: string; readonly exitReason?: 'timeout' | 'signal' | 'normal' } = {},
   ): ExecutableToolResultBuilderResult {
     const finalMessage = this.truncationHappened
       ? message.length === 0
@@ -144,6 +146,7 @@ export class ToolResultBuilder {
       message: finalMessage,
       truncated: this.truncationHappened,
       brief: options.brief,
+      exitReason: options.exitReason,
     };
   }
 }

@@ -10,11 +10,13 @@
 import { randomUUID } from 'node:crypto';
 
 import type { TokenUsage } from '@moonshot-ai/kosong';
+import { isProviderSafetyError } from '@moonshot-ai/kosong';
 import type { Logger } from '#/logging/types';
 
 import type { LoopEventDispatcher } from './events';
 import type { LLM, LLMChatParams, LLMChatResponse } from './llm';
 import { chatWithRetry } from './retry';
+import { attemptSafetyRecovery, MAX_SAFETY_RECOVERY_ATTEMPTS } from './safety-recovery';
 import { runToolCallBatch, type ToolCallStepContext } from './tool-call';
 import type {
   ExecutableTool,
@@ -77,7 +79,7 @@ export async function executeLoopStep(deps: ExecuteLoopStepDeps): Promise<{
 
   signal.throwIfAborted();
 
-  const messages = await buildMessages();
+  let currentMessages = await buildMessages();
   signal.throwIfAborted();
 
   const stepUuid = randomUUID();
@@ -102,27 +104,53 @@ export async function executeLoopStep(deps: ExecuteLoopStepDeps): Promise<{
     step: currentStep,
   });
 
-  const chatParams: LLMChatParams = {
-    messages,
-    tools: tools ?? [],
-    signal,
-    ...createChatStreamingCallbacks({
-      dispatchEvent,
-      turnId,
-      currentStep,
-      stepUuid,
-    }),
-  };
-  const response: LLMChatResponse = await chatWithRetry({
-    llm,
-    params: chatParams,
-    dispatchEvent,
-    turnId,
-    currentStep,
-    stepUuid,
-    maxAttempts: maxRetryAttempts,
-    log,
-  });
+  let safetyRecoveryAttempt = 0;
+  let response!: LLMChatResponse;
+
+  while (true) {
+    const chatParams: LLMChatParams = {
+      messages: currentMessages,
+      tools: tools ?? [],
+      signal,
+      ...createChatStreamingCallbacks({
+        dispatchEvent,
+        turnId,
+        currentStep,
+        stepUuid,
+      }),
+    };
+
+    try {
+      response = await chatWithRetry({
+        llm,
+        params: chatParams,
+        dispatchEvent,
+        turnId,
+        currentStep,
+        stepUuid,
+        maxAttempts: maxRetryAttempts,
+        log,
+      });
+      break;
+    } catch (error) {
+      if (!isProviderSafetyError(error) || safetyRecoveryAttempt >= MAX_SAFETY_RECOVERY_ATTEMPTS) {
+        throw error;
+      }
+
+      safetyRecoveryAttempt += 1;
+      const recovery = attemptSafetyRecovery(currentMessages, safetyRecoveryAttempt);
+
+      if (!recovery.recovered || !recovery.prunedMessages) {
+        throw error;
+      }
+
+      log?.info?.(
+        `Safety recovery attempt ${String(safetyRecoveryAttempt)}/${String(MAX_SAFETY_RECOVERY_ATTEMPTS)}: strategy=${recovery.strategy}`,
+      );
+
+      currentMessages = [...recovery.prunedMessages];
+    }
+  }
   const usage = response.usage;
   const usageResult = await recordUsage(usage);
   const stopTurnAfterUsage = usageResult?.stopTurn === true;
@@ -134,6 +162,12 @@ export async function executeLoopStep(deps: ExecuteLoopStepDeps): Promise<{
   // contains tool calls.
   let effectiveStopReason: LoopStepStopReason =
     stopTurnAfterUsage && stopReason === 'tool_use' ? 'end_turn' : stopReason;
+
+  // If we recovered from a safety filter error, override the stop reason
+  if (safetyRecoveryAttempt > 0 && effectiveStopReason !== 'tool_use') {
+    effectiveStopReason = 'safety_recovered';
+  }
+
   if (effectiveStopReason === 'tool_use') {
     const toolBatch = await runToolCallBatch(step, response);
     if (toolBatch.stopTurn) effectiveStopReason = 'end_turn';

@@ -2,6 +2,7 @@ import { sleep } from '@antfu/utils';
 import * as retry from 'retry';
 
 import type { Logger } from '#/logging/types';
+import { APIConnectionError, APITimeoutError } from '@moonshot-ai/kosong';
 
 import { abortable } from '../utils/abort';
 import type { LoopEventDispatcher } from './events';
@@ -74,11 +75,23 @@ function logRequestFailure(
   maxAttempts: number,
 ): void {
   if (isAbortError(error) || input.params.signal.aborted) return;
+  const fields = retryErrorFields(error);
+  const isTransport =
+    error instanceof APIConnectionError || error instanceof APITimeoutError;
+  const isUndiciTerminated =
+    fields.errorName === 'TypeError' && fields.errorMessage === 'terminated';
   input.log?.warn('llm request failed', {
     turnStep: `${input.turnId}.${String(input.currentStep)}`,
     attempt: `${String(attempt)}/${String(maxAttempts)}`,
     model: input.llm.modelName,
-    ...retryErrorFields(error),
+    ...fields,
+    ...(isTransport && {
+      infraHint: isUndiciTerminated
+        ? 'Connection reset by peer (undici terminated), retrying…'
+        : fields.statusCode === 529
+          ? 'Provider overloaded (529), retrying…'
+          : undefined,
+    }),
   });
 }
 

@@ -167,6 +167,13 @@ function checkActionObservationPhase(
       ctx.telemetry.invalidateFingerprints(toolCall.name);
     }
 
+    // Timeout-aware invalidation: a timed-out process leaves stale observations
+    // (partial output, released file locks) so prior fingerprints must be cleared
+    // to allow the agent to retry without circuit-breaker deadlock.
+    if (result.exitReason === 'timeout') {
+      ctx.telemetry.invalidateFingerprints(toolCall.name);
+    }
+
     const outputHash = hashObservation(result);
     ctx.telemetry.recordObservation(toolCall.id, outputHash);
     const matches = ctx.telemetry.recentMatches(

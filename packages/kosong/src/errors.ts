@@ -68,6 +68,20 @@ export class APIProviderRateLimitError extends APIStatusError {
 }
 
 /**
+ * HTTP status error indicating the provider's safety filter rejected the request.
+ *
+ * This is distinct from a generic API error: the request was structurally valid
+ * but the provider flagged the content as high-risk. Context self-healing can
+ * attempt recovery by pruning the conversation context and retrying.
+ */
+export class APIProviderSafetyError extends APIStatusError {
+  constructor(statusCode: number, message: string, requestId?: string | null) {
+    super(statusCode, message, requestId);
+    this.name = 'APIProviderSafetyError';
+  }
+}
+
+/**
  * The API returned an empty response (no content, no tool calls).
  */
 export class APIEmptyResponseError extends ChatProviderError {
@@ -119,6 +133,22 @@ const PROVIDER_RATE_LIMIT_MESSAGE_PATTERNS = [
   /rate-limited/,
 ] as const;
 
+const SAFETY_TRIGGERED_MESSAGE_PATTERNS = [
+  /high[\s_-]?risk/i,
+  /safety[\s_-]?filter/i,
+  /content[\s_-]?policy/i,
+  /moderation[\s_-]?blocked/i,
+  /request[\s_-]?rejected/i,
+  /blocked[\s_-]?by[\s_-]?safety/i,
+] as const;
+
+export function isSafetyTriggeredStatusError(statusCode: number, message: string): boolean {
+  return (
+    (statusCode === 400 || statusCode === 403) &&
+    SAFETY_TRIGGERED_MESSAGE_PATTERNS.some((pattern) => pattern.test(message))
+  );
+}
+
 export function isContextOverflowErrorCode(code: string | null | undefined): boolean {
   return code === 'context_length_exceeded';
 }
@@ -130,6 +160,9 @@ export function normalizeAPIStatusError(
 ): APIStatusError {
   if (statusCode === 429) {
     return new APIProviderRateLimitError(message, requestId);
+  }
+  if (isSafetyTriggeredStatusError(statusCode, message)) {
+    return new APIProviderSafetyError(statusCode, message, requestId);
   }
   if (isContextOverflowStatusError(statusCode, message)) {
     return new APIContextOverflowError(statusCode, message, requestId);
@@ -151,6 +184,14 @@ export function isProviderRateLimitError(error: unknown): boolean {
 
   const lowerMessage = errorMessage(error).toLowerCase();
   return PROVIDER_RATE_LIMIT_MESSAGE_PATTERNS.some((pattern) => pattern.test(lowerMessage));
+}
+
+export function isProviderSafetyError(error: unknown): boolean {
+  if (error instanceof APIProviderSafetyError) return true;
+  const statusCode = getStatusCode(error);
+  if (statusCode === undefined) return false;
+  const msg = errorMessage(error);
+  return isSafetyTriggeredStatusError(statusCode, msg);
 }
 
 function getStatusCode(error: unknown): number | undefined {

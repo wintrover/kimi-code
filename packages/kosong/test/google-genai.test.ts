@@ -5,6 +5,7 @@ import {
   APIStatusError,
   APITimeoutError,
   ChatProviderError,
+  isRetryableGenerateError,
 } from '#/errors';
 import type { Message, StreamedMessagePart, ToolCall } from '#/message';
 import {
@@ -1449,6 +1450,12 @@ describe('convertGoogleGenAIError (unit)', () => {
   it('maps a "fetch failed" TypeError to APIConnectionError', () => {
     const result = convertGoogleGenAIError(new TypeError('fetch failed'));
     expect(result).toBeInstanceOf(APIConnectionError);
+  });
+
+  it('maps undici TypeError("terminated") to APIConnectionError', () => {
+    const result = convertGoogleGenAIError(new TypeError('terminated'));
+    expect(result).toBeInstanceOf(APIConnectionError);
+    expect(isRetryableGenerateError(result)).toBe(true);
   });
 
   it('maps a timeout-keyword Error to APITimeoutError (priority over network)', () => {

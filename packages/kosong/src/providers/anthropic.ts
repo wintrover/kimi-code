@@ -5,6 +5,7 @@ import {
   ChatProviderError,
   normalizeAPIStatusError,
 } from '#/errors';
+import { classifyTransportError } from '#/providers/error-patterns';
 import type { ContentPart, Message, StreamedMessagePart, ToolCall } from '#/message';
 import type {
   ChatProvider,
@@ -590,7 +591,7 @@ export function convertAnthropicError(error: unknown): ChatProviderError {
     return new ChatProviderError(`Anthropic error: ${error.message}`);
   }
   if (error instanceof Error) {
-    return new ChatProviderError(`Error: ${error.message}`);
+    return classifyTransportError(error.message);
   }
   return new ChatProviderError(`Error: ${String(error)}`);
 }
@@ -1038,12 +1039,20 @@ export class AnthropicChatProvider implements ChatProvider {
     }
 
     const requestOptions: Record<string, unknown> = {};
-    const headers = mergeRequestHeaders(extraHeaders, options?.auth?.headers);
+    const mergedExtra = { ...extraHeaders, 'Connection': 'keep-alive' } as Record<string, string>;
+    const headers = mergeRequestHeaders(mergedExtra, options?.auth?.headers);
     if (headers !== undefined) {
       requestOptions['headers'] = headers;
     }
     if (options?.signal) {
       requestOptions['signal'] = options.signal;
+    }
+    // Dynamic timeout: scale with output token budget to avoid premature
+    // connection drops on long reasoning runs.  Floor = 5 min, ceiling = 20 min.
+    const maxTokens = createParams['max_tokens'] as number | undefined;
+    if (typeof maxTokens === 'number' && maxTokens > 0) {
+      const scaled = Math.round(maxTokens / 50) * 1000; // ~20s per 1k tokens
+      requestOptions['timeout'] = Math.min(Math.max(scaled, 300_000), 1_200_000);
     }
     const finalRequestOptions = Object.keys(requestOptions).length > 0 ? requestOptions : undefined;
     const client = this._createClient(options?.auth);

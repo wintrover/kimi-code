@@ -34,7 +34,8 @@ export type LoopStepStopReason =
   | 'tool_use'
   | 'filtered'
   | 'paused'
-  | 'unknown';
+  | 'unknown'
+  | 'safety_recovered';
 
 export type LoopTerminalStepStopReason = Exclude<LoopStepStopReason, 'tool_use'>;
 
@@ -79,6 +80,12 @@ export interface ExecutableToolSuccessResult {
    * this to the user.
    */
   readonly message?: string | undefined;
+  /**
+   * Why the process exited. Propagated from the shell tool so downstream
+   * consumers (e.g. circuit-breaker) can distinguish timeout kills from
+   * normal errors and decide whether to invalidate stale fingerprints.
+   */
+  readonly exitReason?: 'timeout' | 'signal' | 'normal' | undefined;
 }
 
 export interface ExecutableToolErrorResult {
@@ -88,6 +95,8 @@ export interface ExecutableToolErrorResult {
   readonly message?: string | undefined;
   /** See {@link ExecutableToolSuccessResult.stopTurn}. */
   readonly stopTurn?: boolean | undefined;
+  /** See {@link ExecutableToolSuccessResult.exitReason}. */
+  readonly exitReason?: 'timeout' | 'signal' | 'normal' | undefined;
 }
 
 export type ExecutableToolResult = ExecutableToolSuccessResult | ExecutableToolErrorResult;

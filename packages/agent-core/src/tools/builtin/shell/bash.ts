@@ -332,10 +332,11 @@ export class BashTool implements BuiltinTool<BashInput> {
           timeoutMs % 1000 === 0 ? `${String(timeoutMs / 1000)}s` : `${String(timeoutMs)}ms`;
         return builder.error(`Command killed by timeout (${timeoutLabel})`, {
           brief: `Killed by timeout (${timeoutLabel})`,
+          exitReason: 'timeout',
         });
       }
       if (aborted) {
-        return builder.error('Interrupted by user', { brief: 'Interrupted by user' });
+        return builder.error('Interrupted by user', { brief: 'Interrupted by user', exitReason: 'signal' });
       }
 
       const isError = exitCode !== 0;
@@ -344,10 +345,11 @@ export class BashTool implements BuiltinTool<BashInput> {
       }
 
       if (!isError) {
-        return builder.ok('Command executed successfully.');
+        return builder.ok('Command executed successfully.', { exitReason: 'normal' });
       }
       return builder.error(`Command failed with exit code: ${String(exitCode)}.`, {
         brief: `Failed with exit code: ${String(exitCode)}`,
+        exitReason: 'normal',
       });
     } catch (error) {
       return {
