@@ -1,5 +1,11 @@
 # @moonshot-ai/kosong
 
+## 0.4.5
+
+### Patch Changes
+
+- [`f17924a`](https://github.com/MoonshotAI/kimi-code/commit/f17924ae26e7b55403645e9757c4f344bddbf839) - Fix misclassification of SSE stream drop errors (undici "terminated") as non-retryable, and add transport-level error pattern deduplication across providers.
+
 ## 0.4.4
 
 ### Patch Changes

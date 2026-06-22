@@ -53,7 +53,7 @@ const BRANCH_NODE_TYPES = new Set([
   'when_statement',
 ]);
 
-const PROC_NODE_TYPES = new Set([
+const _PROC_NODE_TYPES = new Set([
   'proc_definition',
   'func_definition',
   'method_definition',
@@ -61,6 +61,7 @@ const PROC_NODE_TYPES = new Set([
   'template_definition',
   'macro_definition',
 ]);
+void _PROC_NODE_TYPES;
 
 // ---------------------------------------------------------------------------
 // Singleton parser (lazy init)
@@ -238,11 +239,11 @@ export async function analyzeSourceCode(
   let parser: TreeSitterParser;
   try {
     parser = await getParser();
-  } catch (cause) {
+  } catch (error) {
     // WASM unavailable — fall back to line-count heuristic
     const metrics = fallbackCostMetrics(
       sourceCode,
-      `Parser init failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+      `Parser init failed: ${error instanceof Error ? error.message : String(error)}`,
     );
     return { filePath, metrics, imports: [] };
   }
@@ -250,10 +251,10 @@ export async function analyzeSourceCode(
   let tree: TreeSitterTree;
   try {
     tree = parser.parse(sourceCode);
-  } catch (cause) {
+  } catch (error) {
     const metrics = fallbackCostMetrics(
       sourceCode,
-      `Parse failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+      `Parse failed: ${error instanceof Error ? error.message : String(error)}`,
     );
     return { filePath, metrics, imports: [] };
   }

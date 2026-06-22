@@ -25,7 +25,7 @@ export class WorkloadPartitionerTool implements BuiltinTool<WorkloadPartitionerI
   readonly description = DESCRIPTION;
   readonly parameters: Record<string, unknown> = toInputJsonSchema(WorkloadPartitionerInputSchema);
 
-  constructor(private readonly subagentHost: SessionSubagentHost) {}
+  constructor(_subagentHost: SessionSubagentHost) {}
 
   resolveExecution(args: WorkloadPartitionerInput): ToolExecution {
     return {
@@ -87,9 +87,9 @@ export class WorkloadPartitionerTool implements BuiltinTool<WorkloadPartitionerI
             })),
           }, null, 2),
         };
-      } catch (err) {
+      } catch (error) {
         return {
-          output: `Error: ${err instanceof Error ? err.message : String(err)}`,
+          output: `Error: ${error instanceof Error ? error.message : String(error)}`,
           isError: true,
         };
       }

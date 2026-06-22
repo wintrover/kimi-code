@@ -1,4 +1,4 @@
-import type { GuardrailContext, GuardrailMiddleware, TurnEvent } from '../context.js';
+import type { GuardrailMiddleware, TurnEvent } from '../context.js';
 import { reduceTurnState } from '../state.js';
 
 /**

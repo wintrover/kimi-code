@@ -64,7 +64,7 @@ function restoreAgentRecord(agent: Agent, input: AgentRecord): void {
       agent.fullCompaction.cancel();
       return;
     case 'full_compaction.complete':
-      agent.fullCompaction.markCompleted();
+      agent.fullCompaction.markCompleted(input);
       return;
     case 'micro_compaction.apply':
       agent.microCompaction.apply(input.cutoff);

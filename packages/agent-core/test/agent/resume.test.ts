@@ -242,6 +242,10 @@ describe('Agent resume', () => {
       },
       {
         type: 'full_compaction.complete',
+        summary: 'Compacted implementation notes.',
+        compactedCount: 1,
+        tokensBefore: 120,
+        tokensAfter: 24,
       },
       {
         type: 'context.apply_compaction',
@@ -688,6 +692,10 @@ function resumeHistory(): AgentRecord[] {
     },
     {
       type: 'full_compaction.complete',
+      summary: 'Historical compacted summary.',
+      compactedCount: 3,
+      tokensBefore: 12,
+      tokensAfter: 4,
     },
     {
       type: 'context.apply_compaction',

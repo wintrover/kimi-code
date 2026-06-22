@@ -168,7 +168,15 @@ export class ContextMemory {
       },
       ...this._history.slice(result.compactedCount),
     ];
-    this.openSteps.clear();
+    // Transactional Eviction: only remove openSteps entries whose messages
+    // were in the compacted prefix. Steps opened after compaction started
+    // have their messages in the surviving tail and are preserved.
+    const surviving = new Set(this._history);
+    for (const [uuid, message] of this.openSteps) {
+      if (!surviving.has(message)) {
+        this.openSteps.delete(uuid);
+      }
+    }
     this.flushDeferredMessagesIfToolExchangeClosed();
     this._tokenCount = result.tokensAfter;
     this.tokenCountCoveredMessageCount = this._history.length;
@@ -211,12 +219,12 @@ export class ContextMemory {
   }
 
   appendLoopEvent(event: LoopRecordedEvent): void {
-    this.agent.records.logRecord({
-      type: 'context.append_loop_event',
-      event,
-    });
     switch (event.type) {
       case 'step.begin': {
+        this.agent.records.logRecord({
+          type: 'context.append_loop_event',
+          event,
+        });
         const message: ContextMessage = {
           role: 'assistant',
           content: [],
@@ -227,6 +235,10 @@ export class ContextMemory {
         return;
       }
       case 'step.end': {
+        this.agent.records.logRecord({
+          type: 'context.append_loop_event',
+          event,
+        });
         const openStep = this.openSteps.get(event.uuid);
         this.openSteps.delete(event.uuid);
         if (event.usage !== undefined) {
@@ -245,20 +257,34 @@ export class ContextMemory {
       case 'content.part': {
         const openStep = this.openSteps.get(event.stepUuid);
         if (openStep === undefined) {
+          if (this.agent.records.restoring) {
+            return;
+          }
           throw new Error(
             `Received content_part for unknown step_uuid '${event.stepUuid}' (no open step_begin)`,
           );
         }
+        this.agent.records.logRecord({
+          type: 'context.append_loop_event',
+          event,
+        });
         openStep.content.push(event.part);
         return;
       }
       case 'tool.call': {
         const openStep = this.openSteps.get(event.stepUuid);
         if (openStep === undefined) {
+          if (this.agent.records.restoring) {
+            return;
+          }
           throw new Error(
             `Received tool_call for unknown step_uuid '${event.stepUuid}' (no open step_begin)`,
           );
         }
+        this.agent.records.logRecord({
+          type: 'context.append_loop_event',
+          event,
+        });
         openStep.toolCalls.push({
           type: 'function',
           id: event.toolCallId,
@@ -269,6 +295,10 @@ export class ContextMemory {
         return;
       }
       case 'tool.result': {
+        this.agent.records.logRecord({
+          type: 'context.append_loop_event',
+          event,
+        });
         const message = createToolMessage(event.toolCallId, toolResultOutputForModel(event.result));
         this.pushHistory({
           ...message,

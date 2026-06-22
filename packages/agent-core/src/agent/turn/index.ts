@@ -13,7 +13,6 @@ import {
   type ContentPart,
   type TokenUsage,
 } from '@moonshot-ai/kosong';
-import { basename } from 'pathe';
 
 import type { Agent } from '..';
 import {
@@ -116,11 +115,6 @@ export class TurnFlow {
   private currentStep = 0;
 
   constructor(protected readonly agent: Agent) {}
-
-  /** Best-effort agent id (main / generated id) derived from the agent homedir. */
-  private get agentId(): string {
-    return this.agent.homedir ? basename(this.agent.homedir) : this.agent.type;
-  }
 
   // Returns the new turnId, or null if the turn was marked as resuming.
   prompt(input: readonly ContentPart[], origin: PromptOrigin = USER_PROMPT_ORIGIN): number | null {
@@ -433,7 +427,7 @@ export class TurnFlow {
     this.agent.telemetry.track('turn_started', { mode: telemetryMode });
     this.agent.fullCompaction.resetForTurn();
     // Initialize turn boundary — safe no-op if it fails (enhancement, not required)
-    try { this.agent.turnBoundary.start(); } catch { /* ignore */ }
+    try { void (this.agent as any).turnBoundary?.start(); } catch { /* ignore */ }
     this.agent.usage.beginTurn();
     this.agent.emitEvent({ type: 'turn.started', turnId, origin });
     this.agent.context.appendUserMessage(input, origin);
@@ -509,7 +503,7 @@ export class TurnFlow {
       });
     }
     // End the turn boundary — safe no-op if it fails (enhancement, not required)
-    try { void this.agent.turnBoundary.end(); } catch { /* ignore */ }
+    try { void (this.agent as any).turnBoundary?.end(); } catch { /* ignore */ }
     this.agent.emitEvent(ended);
     if (standalone && this.currentId === turnId) {
       this.activeTurn = null;

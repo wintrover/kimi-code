@@ -74,8 +74,8 @@ export class BudgetMiddleware implements StepMiddleware {
 
   constructor(
     private readonly budgetManager: ContextBudgetManager,
-    private readonly turnBoundary: TurnBoundary,
-    private readonly checkpointStore: CheckpointStore,
+    _turnBoundary: TurnBoundary,
+    _checkpointStore: CheckpointStore,
   ) {}
 
   async process(ctx: StepContext): Promise<StepMiddlewareResult> {
@@ -104,7 +104,7 @@ export class RecoveryMiddleware implements StepMiddleware {
 
   async process(_ctx: StepContext): Promise<StepMiddlewareResult> {
     const snapshot = await this.checkpointStore.load(this.agentId);
-    const decision = this.recoveryPolicy.evaluate(snapshot);
+    const decision = this.recoveryPolicy.evaluate(snapshot ?? null);
     if (decision.shouldInject) {
       return { action: 'continue', recoveryInjections: decision.injections };
     }

@@ -13,6 +13,7 @@ export type {
   WireEntry,
   ApiError,
   AgentRecord,
+  CompactionResult,
   ContextMessage,
   PromptOrigin,
   TokenUsage,

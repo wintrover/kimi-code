@@ -2,6 +2,8 @@
 // Single source of truth: everything below comes from agent-core directly.
 // Do NOT add local interfaces that duplicate upstream shapes.
 
+import type { AgentRecord } from '@moonshot-ai/agent-core';
+
 export type {
   AgentRecord,
   AgentRecordEvents,

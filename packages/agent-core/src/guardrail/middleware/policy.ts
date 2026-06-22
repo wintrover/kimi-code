@@ -82,7 +82,7 @@ function buildEvalContext(toolName: string, args: Record<string, unknown>): Eval
 }
 
 async function handleDecision(
-  ctx: GuardrailContext,
+  _ctx: GuardrailContext,
   toolName: string,
   parsedArgs: Record<string, unknown>,
   decision: PolicyDecision,

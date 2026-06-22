@@ -938,13 +938,13 @@ describe('normalizeMcpInputSchema', () => {
       },
     };
     const result = normalizeMcpInputSchema(schema);
-    expect(result.properties.max_results).toEqual({
+    expect(((result as Record<string, unknown>)['properties'] as Record<string, unknown>)['max_results']).toEqual({
       type: 'integer',
       default: 10,
       title: 'Max Results',
       nullable: true,
     });
-    expect(result.properties.max_results).not.toHaveProperty('anyOf');
+    expect(((result as Record<string, unknown>)['properties'] as Record<string, unknown>)['max_results']).not.toHaveProperty('anyOf');
   });
 
   it('converts anyOf with string and null to nullable string', () => {
@@ -957,7 +957,7 @@ describe('normalizeMcpInputSchema', () => {
       },
     };
     const result = normalizeMcpInputSchema(schema);
-    expect(result.properties.file_pattern).toEqual({
+    expect(((result as Record<string, unknown>)['properties'] as Record<string, unknown>)['file_pattern']).toEqual({
       type: 'string',
       nullable: true,
     });
@@ -969,7 +969,7 @@ describe('normalizeMcpInputSchema', () => {
     };
     const result = normalizeMcpInputSchema(schema);
     expect(result).toHaveProperty('anyOf');
-    expect(result.anyOf).toHaveLength(3);
+    expect((result as Record<string, unknown>)['anyOf']).toHaveLength(3);
   });
 
   it('handles schemas without anyOf unchanged', () => {
@@ -998,7 +998,9 @@ describe('normalizeMcpInputSchema', () => {
       },
     };
     const result = normalizeMcpInputSchema(schema);
-    expect(result.properties.config.properties.timeout).toEqual({
+    expect(
+      ((((result as Record<string, unknown>)['properties'] as Record<string, unknown>)['config'] as Record<string, unknown>)['properties'] as Record<string, unknown>)['timeout'],
+    ).toEqual({
       type: 'integer',
       nullable: true,
     });

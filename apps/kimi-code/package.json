@@ -1,6 +1,6 @@
 {
   "name": "@moonshot-ai/kimi-code",
-  "version": "0.14.3",
+  "version": "0.15.0",
   "description": "The Starting Point for Next-Gen Agents",
   "license": "MIT",
   "author": "Moonshot AI",
@@ -83,6 +83,7 @@
     "@moonshot-ai/kimi-code-sdk": "workspace:^",
     "@moonshot-ai/kimi-telemetry": "workspace:^",
     "@moonshot-ai/migration-legacy": "workspace:^",
+    "@moonshot-ai/protocol": "workspace:^",
     "@types/semver": "^7.7.0",
     "@types/yazl": "^2.4.6",
     "postject": "1.0.0-alpha.6",

@@ -184,6 +184,8 @@ function providerFinishReasonForStopReason(reason: LoopStepStopReason): FinishRe
       return 'paused';
     case 'unknown':
       return 'other';
+    case 'safety_recovered':
+      return 'other';
     default: {
       const _exhaustive: never = reason;
       return _exhaustive;

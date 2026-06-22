@@ -93,8 +93,8 @@ export class ArtifactSchemaRegistry {
 
   registerMigration<From, To>(
     profileName: string,
-    fromVersion: string,
-    toVersion: string,
+    _fromVersion: string,
+    _toVersion: string,
     transformer: MigrationTransformer<From, To>,
   ): void {
     const existing = this.schemas.get(profileName);

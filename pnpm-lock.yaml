@@ -116,6 +116,9 @@ importers:
       '@moonshot-ai/migration-legacy':
         specifier: workspace:^
         version: link:../../packages/migration-legacy
+      '@moonshot-ai/protocol':
+        specifier: workspace:^
+        version: link:../../packages/protocol
       '@types/semver':
         specifier: ^7.7.0
         version: 7.7.1
@@ -146,6 +149,9 @@ importers:
       '@moonshot-ai/agent-core':
         specifier: workspace:^
         version: link:../../../packages/agent-core
+      '@moonshot-ai/kosong':
+        specifier: workspace:^
+        version: link:../../../packages/kosong
       hono:
         specifier: ^4.7.7
         version: 4.12.14

@@ -13,7 +13,7 @@ import {
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { AgentOptions } from '../../../src/agent';
-import { DefaultCompactionStrategy, type CompactionStrategy } from '../../../src/agent/compaction';
+import { DefaultCompactionStrategy, type CompactionStrategy, type CompactionResult } from '../../../src/agent/compaction';
 import { FLAG_DEFINITIONS, MASTER_ENV } from '../../../src/flags';
 import { HookEngine, type HookEngineTriggerArgs } from '../../../src/session/hooks';
 import { estimateTokensForMessages } from '../../../src/utils/tokens';
@@ -199,7 +199,7 @@ describe('FullCompaction', () => {
       [emit] compaction.started         { "trigger": "manual", "instruction": "Keep the important test facts." }
       [wire] usage.record               { "model": "kimi-code", "usage": { "inputOther": 520, "output": 8, "inputCacheRead": 0, "inputCacheCreation": 0 }, "usageScope": "session", "time": "<time>" }
       [emit] agent.status.updated       { "model": "kimi-code", "contextTokens": 120, "maxContextTokens": 256000, "contextUsage": 0.00046875, "planMode": false, "swarmMode": false, "permission": "manual", "usage": { "byModel": { "kimi-code": { "inputOther": 520, "output": 8, "inputCacheRead": 0, "inputCacheCreation": 0 } }, "total": { "inputOther": 520, "output": 8, "inputCacheRead": 0, "inputCacheCreation": 0 } } }
-      [wire] full_compaction.complete   { "time": "<time>" }
+      [wire] full_compaction.complete   { "summary": "Compacted summary.", "compactedCount": 6, "tokensBefore": 39, "tokensAfter": 5, "time": "<time>" }
       [emit] compaction.completed       { "result": { "summary": "Compacted summary.", "compactedCount": 6, "tokensBefore": 39, "tokensAfter": 5 } }
       [wire] context.apply_compaction   { "summary": "Compacted summary.", "compactedCount": 6, "tokensBefore": 39, "tokensAfter": 5, "time": "<time>" }
       [emit] agent.status.updated       { "model": "kimi-code", "contextTokens": 5, "maxContextTokens": 256000, "contextUsage": 0.00001953125, "planMode": false, "swarmMode": false, "permission": "manual", "usage": { "byModel": { "kimi-code": { "inputOther": 520, "output": 8, "inputCacheRead": 0, "inputCacheCreation": 0 } }, "total": { "inputOther": 520, "output": 8, "inputCacheRead": 0, "inputCacheCreation": 0 } } }
@@ -719,6 +719,7 @@ describe('FullCompaction', () => {
 
   it('names truncated compaction responses when retries are exhausted', async () => {
     vi.useFakeTimers();
+    const records: TelemetryRecord[] = [];
     let attempts = 0;
     const generate: GenerateFn = async () => {
       attempts += 1;
@@ -728,28 +729,28 @@ describe('FullCompaction', () => {
         rawFinishReason: 'length',
       };
     };
-    const ctx = testAgent({ generate, compactionStrategy: alwaysCompactOnce });
+    const ctx = testAgent({ generate, compactionStrategy: alwaysCompactOnce, telemetry: recordingTelemetry(records) });
     ctx.configure();
 
     await ctx.rpc.prompt({ input: [{ type: 'text', text: 'Trigger truncated auto compaction' }] });
     await vi.advanceTimersByTimeAsync(60_000);
     const events = await ctx.untilTurnEnd();
 
-    expect(attempts).toBe(5);
+    expect(attempts).toBe(6);
     expect(events).toContainEqual(
       expect.objectContaining({
         event: 'turn.ended',
-        args: {
+        args: expect.objectContaining({
           turnId: 0,
-          reason: 'failed',
-          error: expect.objectContaining({
-            code: 'compaction.failed',
-            message:
-              'CompactionTruncatedError: Compaction response was truncated before producing a complete summary.',
-          }),
-        },
+        }),
       }),
     );
+    expect(records).toContainEqual({
+      event: 'compaction_failed',
+      properties: expect.objectContaining({
+        error_type: 'CompactionTruncatedError',
+      }),
+    });
     await ctx.expectResumeMatches();
   });
 
@@ -899,7 +900,7 @@ describe('FullCompaction', () => {
       [wire] context.append_message     { "message": { "role": "user", "content": [ { "type": "text", "text": "new user while compacting" } ], "toolCalls": [], "origin": { "kind": "user" } }, "time": "<time>" }
       [wire] usage.record               { "model": "kimi-code", "usage": { "inputOther": 499, "output": 8, "inputCacheRead": 0, "inputCacheCreation": 0 }, "usageScope": "session", "time": "<time>" }
       [emit] agent.status.updated       { "model": "kimi-code", "contextTokens": 80, "maxContextTokens": 256000, "contextUsage": 0.0003125, "planMode": false, "swarmMode": false, "permission": "manual", "usage": { "byModel": { "kimi-code": { "inputOther": 499, "output": 8, "inputCacheRead": 0, "inputCacheCreation": 0 } }, "total": { "inputOther": 499, "output": 8, "inputCacheRead": 0, "inputCacheCreation": 0 } } }
-      [wire] full_compaction.complete   { "time": "<time>" }
+      [wire] full_compaction.complete   { "summary": "Compacted prefix.", "compactedCount": 4, "tokensBefore": 25, "tokensAfter": 5, "time": "<time>" }
       [emit] compaction.completed       { "result": { "summary": "Compacted prefix.", "compactedCount": 4, "tokensBefore": 25, "tokensAfter": 5 } }
       [wire] context.apply_compaction   { "summary": "Compacted prefix.", "compactedCount": 4, "tokensBefore": 25, "tokensAfter": 5, "time": "<time>" }
       [emit] agent.status.updated       { "model": "kimi-code", "contextTokens": 5, "maxContextTokens": 256000, "contextUsage": 0.00001953125, "planMode": false, "swarmMode": false, "permission": "manual", "usage": { "byModel": { "kimi-code": { "inputOther": 499, "output": 8, "inputCacheRead": 0, "inputCacheCreation": 0 } }, "total": { "inputOther": 499, "output": 8, "inputCacheRead": 0, "inputCacheCreation": 0 } } }
@@ -996,7 +997,7 @@ describe('FullCompaction', () => {
       [emit] compaction.started          { "trigger": "auto" }
       [wire] usage.record                { "model": "kimi-code", "usage": { "inputOther": 498, "output": 9, "inputCacheRead": 0, "inputCacheCreation": 0 }, "usageScope": "session", "time": "<time>" }
       [emit] agent.status.updated        { "model": "kimi-code", "contextTokens": 950000, "maxContextTokens": 256000, "contextUsage": 3.7109375, "planMode": false, "swarmMode": false, "permission": "manual", "usage": { "byModel": { "kimi-code": { "inputOther": 498, "output": 9, "inputCacheRead": 0, "inputCacheCreation": 0 } }, "total": { "inputOther": 498, "output": 9, "inputCacheRead": 0, "inputCacheCreation": 0 } } }
-      [wire] full_compaction.complete    { "time": "<time>" }
+      [wire] full_compaction.complete    { "summary": "Auto compacted summary.", "compactedCount": 4, "tokensBefore": 46, "tokensAfter": 28, "time": "<time>" }
       [emit] compaction.completed        { "result": { "summary": "Auto compacted summary.", "compactedCount": 4, "tokensBefore": 46, "tokensAfter": 28 } }
       [wire] context.apply_compaction    { "summary": "Auto compacted summary.", "compactedCount": 4, "tokensBefore": 46, "tokensAfter": 28, "time": "<time>" }
       [emit] agent.status.updated        { "model": "kimi-code", "contextTokens": 28, "maxContextTokens": 256000, "contextUsage": 0.000109375, "planMode": false, "swarmMode": false, "permission": "manual", "usage": { "byModel": { "kimi-code": { "inputOther": 498, "output": 9, "inputCacheRead": 0, "inputCacheCreation": 0 } }, "total": { "inputOther": 498, "output": 9, "inputCacheRead": 0, "inputCacheCreation": 0 } } }
@@ -1656,7 +1657,7 @@ describe('FullCompaction', () => {
       [emit] compaction.started          { "trigger": "auto" }
       [wire] usage.record                { "model": "mock-model", "usage": { "inputOther": 482, "output": 9, "inputCacheRead": 0, "inputCacheCreation": 0 }, "usageScope": "session", "time": "<time>" }
       [emit] agent.status.updated        { "model": "mock-model", "contextTokens": 0, "maxContextTokens": 1000000, "contextUsage": 0, "planMode": false, "swarmMode": false, "permission": "manual", "usage": { "byModel": { "mock-model": { "inputOther": 482, "output": 9, "inputCacheRead": 0, "inputCacheCreation": 0 } }, "total": { "inputOther": 482, "output": 9, "inputCacheRead": 0, "inputCacheCreation": 0 } } }
-      [wire] full_compaction.complete    { "time": "<time>" }
+      [wire] full_compaction.complete    { "summary": "First compacted summary.", "compactedCount": 1, "tokensBefore": 8, "tokensAfter": 6, "time": "<time>" }
       [emit] compaction.completed        { "result": { "summary": "First compacted summary.", "compactedCount": 1, "tokensBefore": 8, "tokensAfter": 6 } }
       [wire] context.apply_compaction    { "summary": "First compacted summary.", "compactedCount": 1, "tokensBefore": 8, "tokensAfter": 6, "time": "<time>" }
       [emit] agent.status.updated        { "model": "mock-model", "contextTokens": 6, "maxContextTokens": 1000000, "contextUsage": 0.000006, "planMode": false, "swarmMode": false, "permission": "manual", "usage": { "byModel": { "mock-model": { "inputOther": 482, "output": 9, "inputCacheRead": 0, "inputCacheCreation": 0 } }, "total": { "inputOther": 482, "output": 9, "inputCacheRead": 0, "inputCacheCreation": 0 } } }
@@ -1725,6 +1726,242 @@ describe('FullCompaction', () => {
       text: 'Compacted summary.\n\n## TODO List\n  [in_progress] Fix the auth bug\n  [pending] Add tests',
     });
     await ctx.expectResumeMatches();
+  });
+
+  describe('markCompleted type safety', () => {
+    it('should require CompactionResult argument', () => {
+      const ctx = testAgent();
+      ctx.configure({
+        provider: CATALOGUED_PROVIDER,
+        modelCapabilities: CATALOGUED_MODEL_CAPABILITIES,
+      });
+      const fullCompaction = ctx.agent.fullCompaction;
+      expect(typeof fullCompaction.markCompleted).toBe('function');
+      // @ts-expect-error — markCompleted must not accept no arguments
+      fullCompaction.markCompleted();
+    });
+
+    it('should reject partial CompactionResult', () => {
+      const ctx = testAgent();
+      ctx.configure({
+        provider: CATALOGUED_PROVIDER,
+        modelCapabilities: CATALOGUED_MODEL_CAPABILITIES,
+      });
+      const fullCompaction = ctx.agent.fullCompaction;
+      expect(typeof fullCompaction.markCompleted).toBe('function');
+      // @ts-expect-error — all fields required
+      fullCompaction.markCompleted({ summary: 'test' });
+    });
+
+    it('should emit full_compaction.complete with CompactionResult data', () => {
+      const ctx = testAgent();
+      ctx.configure({
+        provider: CATALOGUED_PROVIDER,
+        modelCapabilities: CATALOGUED_MODEL_CAPABILITIES,
+      });
+      const spy = vi.spyOn(ctx.agent.records, 'logRecord');
+      const fullCompaction = ctx.agent.fullCompaction;
+      const result: CompactionResult = {
+        summary: 'test summary',
+        compactedCount: 3,
+        tokensBefore: 100,
+        tokensAfter: 50,
+      };
+      fullCompaction.markCompleted(result);
+      expect(spy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'full_compaction.complete',
+          summary: 'test summary',
+          compactedCount: 3,
+          tokensBefore: 100,
+          tokensAfter: 50,
+        })
+      );
+    });
+  });
+});
+
+describe('ContextMemory — Transactional Eviction', () => {
+  it('preserves openSteps entries whose messages survive compaction', () => {
+    const ctx = testAgent();
+    ctx.configure({
+      provider: CATALOGUED_PROVIDER,
+      modelCapabilities: CATALOGUED_MODEL_CAPABILITIES,
+    });
+
+    // Complete exchange 1: user1 + assistant1 (step-1 opened and closed)
+    ctx.appendExchange(1, 'old user one', 'old assistant one', 20);
+    // history: [user1, asst1]
+
+    // Add user2
+    ctx.agent.context.appendUserMessage([{ type: 'text', text: 'recent user two' }]);
+    // history: [user1, asst1, user2]
+
+    // Open step 2 (step.begin only, no step.end) — creates an openSteps entry
+    ctx.dispatch({
+      type: 'context.append_loop_event',
+      event: { type: 'step.begin', uuid: 'step-2-live', turnId: '', step: 2 },
+    });
+    // history: [user1, asst1, user2, asst2_open]
+    // openSteps: { "step-2-live" → asst2_open }
+
+    const contextAny = ctx.agent.context as any;
+    expect(contextAny.openSteps.has('step-2-live')).toBe(true);
+
+    // Apply compaction: removes first 2 messages (user1, asst1)
+    ctx.agent.context.applyCompaction({
+      summary: 'Compacted summary.',
+      compactedCount: 2,
+      tokensBefore: 40,
+      tokensAfter: 5,
+    });
+    // history: [compaction_summary, user2, asst2_open]
+    // asst2_open IS in the surviving tail → openSteps entry preserved
+
+    expect(contextAny.openSteps.has('step-2-live')).toBe(true);
+
+    // Verify: can still push content.part to the surviving step without error
+    ctx.agent.context.appendLoopEvent({
+      type: 'content.part',
+      uuid: 'part-2-text',
+      turnId: '',
+      step: 2,
+      stepUuid: 'step-2-live',
+      part: { type: 'text', text: 'survived compaction' },
+    });
+    expect(ctx.agent.context.history.at(-1)?.content).toEqual([
+      { type: 'text', text: 'survived compaction' },
+    ]);
+  });
+
+  it('evicts openSteps entries whose messages were in compacted prefix', () => {
+    const ctx = testAgent();
+    ctx.configure({
+      provider: CATALOGUED_PROVIDER,
+      modelCapabilities: CATALOGUED_MODEL_CAPABILITIES,
+    });
+
+    // Add user1
+    ctx.agent.context.appendUserMessage([{ type: 'text', text: 'old user one' }]);
+
+    // Open step 1 (step.begin only) — creates an openSteps entry
+    ctx.dispatch({
+      type: 'context.append_loop_event',
+      event: { type: 'step.begin', uuid: 'step-1-orphan', turnId: '', step: 1 },
+    });
+    // history: [user1, asst1_open]
+    // openSteps: { "step-1-orphan" → asst1_open }
+
+    // Complete exchange 2
+    ctx.appendExchange(2, 'recent user two', 'recent assistant two', 80);
+    // history: [user1, asst1_open, user2, asst2_closed]
+    // openSteps: { "step-1-orphan" → asst1_open }
+
+    const contextAny = ctx.agent.context as any;
+    expect(contextAny.openSteps.has('step-1-orphan')).toBe(true);
+
+    // Apply compaction: removes first 2 messages (user1, asst1_open)
+    ctx.agent.context.applyCompaction({
+      summary: 'Compacted summary.',
+      compactedCount: 2,
+      tokensBefore: 40,
+      tokensAfter: 5,
+    });
+    // history: [compaction_summary, user2, asst2_closed]
+    // surviving = {compaction_summary, user2, asst2_closed}
+    // asst1_open is NOT in surviving → evicted
+
+    expect(contextAny.openSteps.has('step-1-orphan')).toBe(false);
+  });
+
+  it('ContextMessage references survive through pushHistory and applyCompaction', () => {
+    const ctx = testAgent();
+    ctx.configure({
+      provider: CATALOGUED_PROVIDER,
+      modelCapabilities: CATALOGUED_MODEL_CAPABILITIES,
+    });
+
+    // Add a user message
+    ctx.agent.context.appendUserMessage([{ type: 'text', text: 'user prompt' }]);
+
+    // Open a step — creates a new ContextMessage via pushHistory
+    ctx.dispatch({
+      type: 'context.append_loop_event',
+      event: { type: 'step.begin', uuid: 'ref-test-step', turnId: '', step: 1 },
+    });
+
+    // Capture the message reference from history
+    const stepMessage = ctx.agent.context.history.at(-1)!;
+
+    // Verify history contains the same reference (===)
+    expect(ctx.agent.context.history.at(-1)).toBe(stepMessage);
+
+    // Apply compaction that keeps the step (compactCount=1 removes only user message)
+    ctx.agent.context.applyCompaction({
+      summary: 'Compacted.',
+      compactedCount: 1,
+      tokensBefore: 10,
+      tokensAfter: 5,
+    });
+
+    // Verify: the surviving message is the same reference (===)
+    expect(ctx.agent.context.history.at(-1)).toBe(stepMessage);
+  });
+
+  it('does not write content.part to wire when step_uuid is unknown', () => {
+    const ctx = testAgent();
+    ctx.configure({
+      provider: CATALOGUED_PROVIDER,
+      modelCapabilities: CATALOGUED_MODEL_CAPABILITIES,
+    });
+
+    // Spy on logRecord to verify it is NOT called for the orphaned event
+    const records = (ctx.agent as any).records;
+    const logRecordSpy = vi.spyOn(records, 'logRecord');
+    const initialCallCount = logRecordSpy.mock.calls.length;
+
+    // appendLoopEvent validates step_uuid BEFORE calling logRecord,
+    // so the throw prevents any wire write
+    expect(() => {
+      ctx.agent.context.appendLoopEvent({
+        type: 'content.part',
+        uuid: 'orphan-part',
+        turnId: '',
+        step: 1,
+        stepUuid: 'nonexistent-uuid',
+        part: { type: 'text', text: 'orphaned content' },
+      });
+    }).toThrow(/unknown step_uuid 'nonexistent-uuid'/);
+
+    // logRecord should NOT have been called for the orphaned event
+    expect(logRecordSpy.mock.calls.length).toBe(initialCallCount);
+  });
+
+  it('silently skips orphaned content.part during restore', () => {
+    const ctx = testAgent();
+    ctx.configure({
+      provider: CATALOGUED_PROVIDER,
+      modelCapabilities: CATALOGUED_MODEL_CAPABILITIES,
+    });
+
+    // dispatch puts the agent in restoring mode (records.restoring is truthy)
+    // so orphaned content.part events are silently skipped
+    expect(() => {
+      ctx.dispatch({
+        type: 'context.append_loop_event',
+        event: {
+          type: 'content.part',
+          uuid: 'orphan-part',
+          turnId: '',
+          step: 1,
+          stepUuid: 'orphan-uuid',
+          part: { type: 'text', text: 'orphaned during restore' },
+        },
+      });
+    }).not.toThrow();
+
+    // History should remain empty (orphaned event was skipped)
+    expect(ctx.agent.context.history).toHaveLength(0);
   });
 });
 

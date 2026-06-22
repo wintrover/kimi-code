@@ -1,5 +1,55 @@
 # @moonshot-ai/kimi-code
 
+## 0.15.0
+
+### Minor Changes
+
+- [`27c9e11`](https://github.com/MoonshotAI/kimi-code/commit/27c9e113152978211698f659c7d0478add42a91b) - Add an `action-observation` detection mode to the execution guardrails circuit breaker, so it trips only when repeated identical tool inputs also produce identical outputs.
+
+- [`6573402`](https://github.com/MoonshotAI/kimi-code/commit/65734027e481628d38e196fc60ad305dc20fa16e) - Add experimental guardrail security system with five defense layers: schema validation, AST-based code analysis, role-based subagent isolation, execution environment sandboxing, and structured security audit logging. Gated behind the `guardrail` experimental flag.
+
+- [`bf36efb`](https://github.com/MoonshotAI/kimi-code/commit/bf36efbbd241fcb2b6cd29e0f06a0d9b3d9d8395) - Add step middleware pipeline with checkpoint-aware recovery policy and turn boundary integration.
+
+- [`0252888`](https://github.com/MoonshotAI/kimi-code/commit/02528882e676f8c6eab80c0925a5d5821fa134f5) - Add artifact-mode subagent output with deterministic `YieldArtifact` commitment and isolated per-subagent workspace ledger.
+
+- [`3e6d060`](https://github.com/MoonshotAI/kimi-code/commit/3e6d06048a5c2a34602a67bcd8cb333c16c4170d) - Add automatic recovery for artifact-mode subagents that finish without a final artifact by synthesizing checkpoint history into a committed result.
+
+- [`520c220`](https://github.com/MoonshotAI/kimi-code/commit/520c22033761454bd3e03b23017698a651e8bc60) - Reduce false-positive loop detection by normalizing non-deterministic tool output before hashing, invalidating fingerprints after successful mutation commands, and defaulting the circuit breaker to action-observation mode.
+
+- [`626fc8d`](https://github.com/MoonshotAI/kimi-code/commit/626fc8d473034ce7c434225a8688b4e5b0b76cfb) - Add experimental formal guard for mathematically-guaranteed subagent loop prevention, gated behind KIMI_CODE_EXPERIMENTAL_FORMAL_GUARD.
+
+- [`5f3de30`](https://github.com/MoonshotAI/kimi-code/commit/5f3de303d746c0dd87cca1a3a99201d334cf7446) - Add `scope` field to hook definitions for project-scoped hook execution. Hooks with a `scope` regex only fire when the session working directory matches the pattern.
+
+- [`8d6cb46`](https://github.com/MoonshotAI/kimi-code/commit/8d6cb4692125f00237994c18bdc011c3ece21599) - Embed guardrail override context in PreToolUse hook stdin payload for external gate integration.
+
+- [`3d463bd`](https://github.com/MoonshotAI/kimi-code/commit/3d463bdf827b1e829877b816f0396fe50bc25666) - Route builtin search tools to code-index MCP servers when available, run sequential-thinking before plan/explore subagent turns, and add declarative MCP auto-approve rules in config.
+
+- [`5f3de30`](https://github.com/MoonshotAI/kimi-code/commit/5f3de303d746c0dd87cca1a3a99201d334cf7446) - Support project-level `.kimi-code/config.toml` for per-project hooks, permission rules, and other settings that merge with the global config.
+
+- [#744](https://github.com/MoonshotAI/kimi-code/pull/744) [`18f299f`](https://github.com/MoonshotAI/kimi-code/commit/18f299fd0b266545a1f7cebae9f58b83b9d9776e) - Add support for legacy SSE MCP servers alongside stdio and streamable HTTP transports.
+
+- [`733c78c`](https://github.com/MoonshotAI/kimi-code/commit/733c78c989fd652bb42d8847639c4bb5932d31ca) - Add immutable execution journal and atomic state capsule for subagent failures, capturing tool history, token metrics, and structured error classification on each subagent completion or failure event.
+
+- [`4cc4b59`](https://github.com/MoonshotAI/kimi-code/commit/4cc4b598f2b1dbb0625e4e584a1e1d3dc42e45e8) - Automatically reorder mixed AgentSwarm batches so AgentSwarm runs last instead of denying the entire batch.
+
+### Patch Changes
+
+- [`932de80`](https://github.com/MoonshotAI/kimi-code/commit/932de80e8e50585f3cd5d7e19f52a1eb2fa5031f) - Normalize tool argument aliases before AJV validation so the validator only ever sees canonical parameter names.
+
+- [`eabb412`](https://github.com/MoonshotAI/kimi-code/commit/eabb4122a9e8d24e4176e0bd759b6b115953e01e) - Fix session resume failure caused by async compaction clearing active steps mid-stream.
+
+- [`80eda27`](https://github.com/MoonshotAI/kimi-code/commit/80eda27d13ce2e732c811b99ec30b2f99ae6c505) - Normalize nullable MCP tool schemas so parameters with optional values from external MCP servers no longer fail validation.
+
+- [`f17924a`](https://github.com/MoonshotAI/kimi-code/commit/f17924ae26e7b55403645e9757c4f344bddbf839) - Fix misclassification of SSE stream drop errors (undici "terminated") as non-retryable, and add transport-level error pattern deduplication across providers.
+
+- [`0d3dfc4`](https://github.com/MoonshotAI/kimi-code/commit/0d3dfc4e05e658be5a72ee50eacae6a805b57060) - Fix TypeScript strict mode errors across agent-core and protocol packages.
+
+- [#766](https://github.com/MoonshotAI/kimi-code/pull/766) [`9cef896`](https://github.com/MoonshotAI/kimi-code/commit/9cef89656311974a57e6675f474ea6c2adb1d8e9) - Clarify that compaction summaries must be emitted in the final answer.
+
+- [#765](https://github.com/MoonshotAI/kimi-code/pull/765) [`046856b`](https://github.com/MoonshotAI/kimi-code/commit/046856b740afb604132e914f1fc489de72394036) - Read media files using header-detected types before falling back to media extensions.
+
+- [#767](https://github.com/MoonshotAI/kimi-code/pull/767) [`a355f2a`](https://github.com/MoonshotAI/kimi-code/commit/a355f2af2fd68ad9e2bdc72ce854cd18c8242ce8) - Prioritize clearing draft editor text before Ctrl-C cancels an active stream.
+
 ## 0.14.3
 
 ### Patch Changes

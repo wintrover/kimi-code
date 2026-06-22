@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { ContextMessage } from '#/agent/context/types';
-import type { Agent } from '#/agent/agent';
+import type { Agent } from '#/agent';
 
 import { buildExecutionJournal, safeStringify } from '../subagent-journal';
 
@@ -72,7 +72,7 @@ describe('safeStringify', () => {
 
   it('handles circular references', () => {
     const obj: Record<string, unknown> = { a: 1 };
-    obj.self = obj;
+    obj['self'] = obj;
     expect(safeStringify(obj)).toBe('{"a":1,"self":"[Circular]"}');
   });
 
@@ -113,7 +113,7 @@ describe('safeStringify', () => {
   it('handles nested circular references', () => {
     const inner: Record<string, unknown> = { x: 1 };
     const outer: Record<string, unknown> = { inner };
-    inner.outer = outer;
+    inner['outer'] = outer;
     expect(safeStringify(outer)).toBe('{"inner":{"x":1,"outer":"[Circular]"}}');
   });
 
@@ -202,7 +202,7 @@ describe('buildExecutionJournal', () => {
     const agent = mockAgent(history);
     const journal = buildExecutionJournal(agent, 1);
 
-    expect(journal.toolsExecuted[0].status).toBe('failed');
+    expect(journal.toolsExecuted[0]!.status).toBe('failed');
   });
 
   it('matches tool calls to their results by toolCallId', () => {
@@ -228,11 +228,11 @@ describe('buildExecutionJournal', () => {
 
     expect(journal.toolsExecuted).toHaveLength(2);
     // First tool call (ToolA) matched to its result (success)
-    expect(journal.toolsExecuted[0].toolName).toBe('ToolA');
-    expect(journal.toolsExecuted[0].status).toBe('success');
+    expect(journal.toolsExecuted[0]!.toolName).toBe('ToolA');
+    expect(journal.toolsExecuted[0]!.status).toBe('success');
     // Second tool call (ToolB) matched to its result (failed)
-    expect(journal.toolsExecuted[1].toolName).toBe('ToolB');
-    expect(journal.toolsExecuted[1].status).toBe('failed');
+    expect(journal.toolsExecuted[1]!.toolName).toBe('ToolB');
+    expect(journal.toolsExecuted[1]!.status).toBe('failed');
   });
 
   it('marks tool as success when no matching tool result exists', () => {
@@ -250,8 +250,8 @@ describe('buildExecutionJournal', () => {
     const agent = mockAgent(history);
     const journal = buildExecutionJournal(agent, 1);
 
-    expect(journal.toolsExecuted[0].status).toBe('success');
-    expect(journal.toolsExecuted[0].durationMs).toBe(0);
+    expect(journal.toolsExecuted[0]!.status).toBe('success');
+    expect(journal.toolsExecuted[0]!.durationMs).toBe(0);
   });
 
   it('truncates args snapshot to 200 chars', () => {
@@ -269,8 +269,8 @@ describe('buildExecutionJournal', () => {
     const agent = mockAgent(history);
     const journal = buildExecutionJournal(agent, 1);
 
-    expect(journal.toolsExecuted[0].argsSnapshot.length).toBeLessThanOrEqual(201); // 200 + ellipsis
-    expect(journal.toolsExecuted[0].argsSnapshot.endsWith('…')).toBe(true);
+    expect(journal.toolsExecuted[0]!.argsSnapshot.length).toBeLessThanOrEqual(201); // 200 + ellipsis
+    expect(journal.toolsExecuted[0]!.argsSnapshot.endsWith('…')).toBe(true);
   });
 
   it('handles JSON string arguments by parsing them', () => {
@@ -288,7 +288,7 @@ describe('buildExecutionJournal', () => {
     const journal = buildExecutionJournal(agent, 1);
 
     // After parsing + re-serialization via safeStringify, the args are normalized
-    expect(journal.toolsExecuted[0].argsSnapshot).toBe('{"old":"foo","new":"bar"}');
+    expect(journal.toolsExecuted[0]!.argsSnapshot).toBe('{"old":"foo","new":"bar"}');
   });
 
   it('handles non-JSON string arguments gracefully', () => {
@@ -306,7 +306,7 @@ describe('buildExecutionJournal', () => {
     const journal = buildExecutionJournal(agent, 1);
 
     // safeParseArgs returns original string when JSON.parse fails
-    expect(journal.toolsExecuted[0].argsSnapshot).toBe('"not valid json {{{"');
+    expect(journal.toolsExecuted[0]!.argsSnapshot).toBe('"not valid json {{{"');
   });
 
   it('skips non-assistant messages', () => {
@@ -326,7 +326,7 @@ describe('buildExecutionJournal', () => {
     const journal = buildExecutionJournal(agent, 1);
 
     expect(journal.toolsExecuted).toHaveLength(1);
-    expect(journal.toolsExecuted[0].toolName).toBe('Glob');
+    expect(journal.toolsExecuted[0]!.toolName).toBe('Glob');
   });
 
   it('skips assistant messages without toolCalls', () => {
@@ -364,7 +364,7 @@ describe('buildExecutionJournal', () => {
     const agent = mockAgent(history);
     const journal = buildExecutionJournal(agent, 1);
 
-    expect(journal.toolsExecuted[0].toolName).toBe('unknown');
+    expect(journal.toolsExecuted[0]!.toolName).toBe('unknown');
   });
 
   it('reports metrics from usage data', () => {
@@ -412,6 +412,6 @@ describe('buildExecutionJournal', () => {
     const journal = buildExecutionJournal(agent, 1);
 
     // safeParseArgs returns undefined, truncateArgs stringifies it as "{}" via `args ?? {}`
-    expect(journal.toolsExecuted[0].argsSnapshot).toBe('{}');
+    expect(journal.toolsExecuted[0]!.argsSnapshot).toBe('{}');
   });
 });

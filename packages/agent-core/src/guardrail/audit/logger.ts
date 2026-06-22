@@ -82,7 +82,6 @@ const RING_BUFFER_CAPACITY = 100;
 export class SecurityAuditLogger {
   private readonly sessionId?: string;
   private readonly logDir: string;
-  private readonly enableTelemetry: boolean;
   private readonly filePath: string;
 
   /** Write buffer — accumulated until the next flush. */
@@ -107,7 +106,6 @@ export class SecurityAuditLogger {
   ) {
     this.sessionId = options?.sessionId;
     this.logDir = options?.logDir ?? DEFAULT_LOG_DIR;
-    this.enableTelemetry = options?.enableTelemetry ?? false;
     this.filePath = join(
       this.logDir,
       `${this.sessionId ?? 'default'}.jsonl`,

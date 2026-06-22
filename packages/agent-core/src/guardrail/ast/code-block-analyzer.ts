@@ -77,7 +77,7 @@ export async function analyzeCodeBlocks(text: string): Promise<CodeBlockAnalysis
 
     let result: MultiLangAnalysisResult;
 
-    if (canonical !== null) {
+    if (canonical !== null && canonical !== undefined) {
       result = await analyzeCode(block.code, canonical);
     } else {
       // No language tag or unsupported language — skip AST analysis.

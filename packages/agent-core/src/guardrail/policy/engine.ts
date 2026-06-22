@@ -112,10 +112,10 @@ function parseTomlValue(raw: string): unknown {
     // Basic string – unescape simple sequences
     return raw
       .slice(1, -1)
-      .replaceAll(/\\n/g, '\n')
-      .replaceAll(/\\t/g, '\t')
-      .replaceAll(/\\\\/g, '\\')
-      .replaceAll(/\\"/g, '"');
+      .replaceAll('\\n', '\n')
+      .replaceAll('\\t', '\t')
+      .replaceAll('\\\\', '\\')
+      .replaceAll('\\"', '"');
   }
 
   // Multi-line basic string
@@ -124,10 +124,10 @@ function parseTomlValue(raw: string): unknown {
       .slice(3, -3)
       .replace(/^\\n/, '')
       .replace(/\\n$/m, '')
-      .replaceAll(/\\n/g, '\n')
-      .replaceAll(/\\t/g, '\t')
-      .replaceAll(/\\\\/g, '\\')
-      .replaceAll(/\\"/g, '"');
+      .replaceAll('\\n', '\n')
+      .replaceAll('\\t', '\t')
+      .replaceAll('\\\\', '\\')
+      .replaceAll('\\"', '"');
   }
 
   // Integer
@@ -293,7 +293,7 @@ function minimatch(str: string, pattern: string): boolean {
   // Convert the simple glob pattern to a regex.
   // Escape all regex-special chars except *, then replace * with .*
   const escaped = pattern.replaceAll(/[.+?^${}()|[\]\\]/g, '\\$&');
-  const regexStr = `^${escaped.replaceAll(/\*/g, '.*')}$`;
+  const regexStr = `^${escaped.replaceAll('*', '.*')}$`;
   try {
     return new RegExp(regexStr).test(str);
   } catch {
@@ -377,7 +377,7 @@ export class PolicyEngine {
       ? this.policyPath.substring(0, this.policyPath.lastIndexOf('/'))
       : '.';
 
-    this.watcher = watch(dir, (eventType, filename) => {
+    this.watcher = watch(dir, (_eventType, filename) => {
       if (filename !== null && this.policyPath.endsWith(filename)) {
         // Debounce: ignore events that fire in rapid succession by letting
         // the serialized reload chain deduplicate naturally.

@@ -219,9 +219,9 @@ export class AgentSwarmTool implements BuiltinTool<AgentSwarmToolInput> {
           if (isolationResult) {
             (args as Record<string, unknown>)['__isolationResult'] = isolationResult;
           }
-        } catch (err) {
+        } catch (error) {
           // Partitioner failed — fall through to normal swarm
-          console.error('[WorkloadPartitioner] Failed:', err);
+          console.error('[WorkloadPartitioner] Failed:', error);
         }
       }
 
@@ -233,7 +233,6 @@ export class AgentSwarmTool implements BuiltinTool<AgentSwarmToolInput> {
         | undefined;
       if (isolationResult) {
         const { mergeWorkspaces, cleanupWorkspaces } = await import('../../../partitioner/workspace-isolation.js');
-        const { buildUndirectedEdges } = await import('../../../partitioner/dependency-graph.js');
         const { execFile: execFileCb } = await import('node:child_process');
         const { promisify } = await import('node:util');
         const execFileAsync = promisify(execFileCb);
@@ -258,8 +257,8 @@ export class AgentSwarmTool implements BuiltinTool<AgentSwarmToolInput> {
             `[WorkspaceIsolation] Merged ${String(mergeResult.mergedCount)}/${String(args.partition_agents)} branches. ` +
             `Conflicts: ${String(mergeResult.conflicts.length)}. Final: ${mergeResult.finalCommit.slice(0, 8)}`
           );
-        } catch (mergeErr) {
-          console.error('[WorkspaceIsolation] Merge failed:', mergeErr);
+        } catch (error) {
+          console.error('[WorkspaceIsolation] Merge failed:', error);
         } finally {
           // Always clean up worktrees
           await cleanupWorkspaces(repoRoot.trim(), isolationResult);

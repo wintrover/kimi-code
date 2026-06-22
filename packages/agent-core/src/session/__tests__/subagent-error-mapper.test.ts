@@ -71,7 +71,7 @@ describe('classifySubagentError', () => {
     const result = classifySubagentError(error);
 
     expect(result.code).toBe('CIRCUIT_BREAKER_TRIPPED');
-    expect((result as Record<string, unknown>).argsHash).toBeUndefined();
+    expect((result as Record<string, unknown>)['argsHash']).toBeUndefined();
   });
 
   it('maps non-circuit_breaker GuardrailViolationError to UNEXPECTED_CRASH', () => {

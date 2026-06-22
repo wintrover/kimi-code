@@ -93,6 +93,7 @@ function mockRecoveryPolicy(decision: {
 }): RecoveryPolicy {
   return {
     evaluate: vi.fn().mockReturnValue(decision),
+    evaluateAfterCompaction: vi.fn().mockReturnValue(decision),
   };
 }
 
@@ -189,7 +190,7 @@ describe('RecoveryMiddleware', () => {
 
     expect(result).toEqual({ action: 'continue' });
     expect(store.load).toHaveBeenCalledWith('agent-0');
-    expect(policy.evaluate).toHaveBeenCalledWith(undefined);
+    expect(policy.evaluate).toHaveBeenCalledWith(null);
   });
 
   it('returns continue with injections when snapshot exists', async () => {

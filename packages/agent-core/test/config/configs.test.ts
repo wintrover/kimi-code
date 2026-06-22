@@ -928,8 +928,8 @@ describe('mergeConfigs', () => {
     });
     const merged = mergeConfigs(base, project);
     expect(merged.hooks).toHaveLength(2);
-    expect(merged.hooks![0].command).toBe('global-hook');
-    expect(merged.hooks![1].command).toBe('project-hook');
+    expect(merged.hooks![0]!.command).toBe('global-hook');
+    expect(merged.hooks![1]!.command).toBe('project-hook');
   });
 
   it('project scalars override global scalars', () => {
@@ -963,8 +963,8 @@ describe('mergeConfigs', () => {
     });
     const merged = mergeConfigs(globalWithRules, project);
     expect(merged.permission?.rules).toHaveLength(2);
-    expect(merged.permission?.rules![0].pattern).toBe('Read');
-    expect(merged.permission?.rules![1].pattern).toBe('Bash(rm -rf*)');
+    expect(merged.permission?.rules![0]!.pattern).toBe('Read');
+    expect(merged.permission?.rules![1]!.pattern).toBe('Bash(rm -rf*)');
   });
 });
 
@@ -980,7 +980,7 @@ describe('HookDefSchema with scope', () => {
       scope = ".*/my-project$"
     `);
     expect(config.hooks).toHaveLength(1);
-    expect(config.hooks![0].scope).toBe('.*/my-project$');
+    expect(config.hooks![0]!.scope).toBe('.*/my-project$');
   });
 
   it('accepts hook without scope field', () => {
@@ -992,7 +992,7 @@ describe('HookDefSchema with scope', () => {
       command = "notify-send done"
     `);
     expect(config.hooks).toHaveLength(1);
-    expect(config.hooks![0].scope).toBeUndefined();
+    expect(config.hooks![0]!.scope).toBeUndefined();
   });
 });
 

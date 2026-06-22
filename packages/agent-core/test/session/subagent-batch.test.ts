@@ -775,7 +775,7 @@ function completionFromMockOutcome<T>(
           return;
         }
         if (result.status === 'completed') {
-          resolve({ result: result.result ?? '', usage: result.usage });
+          resolve({ result: result.result ?? '', usage: result.usage, capsule: { status: 'COMPLETED', journal: { turnsCompleted: 0, toolsExecuted: [], metrics: { inputOther: 0, output: 0, inputCacheRead: 0, inputCacheCreation: 0 } }, output: '' } });
           return;
         }
         reject(new Error(result.error ?? result.status));

@@ -196,7 +196,7 @@ export function computeDeterministicMergeOrder(
   agentCount: number,
   partition: PartitionResult,
   edges: readonly [number, number][],
-  filePaths: readonly string[],
+  _filePaths: readonly string[],
 ): number[] {
   // Build cross-partition dependency graph: dep[importer] depends on dep[imported]
   // Edge (u, v) where u's agent != v's agent: agent(u) depends on agent(v)
@@ -217,7 +217,7 @@ export function computeDeterministicMergeOrder(
 
   // Kahn's algorithm for topological sort
   // Compute in-degree for each agent
-  const inDegree = new Array<number>(agentCount).fill(0);
+  const inDegree = Array.from({ length: agentCount }, () => 0);
   for (const [agent, deps] of dependencies) {
     void agent;
     for (const dep of deps) {
@@ -331,7 +331,7 @@ export async function mergeWorkspaces(
         '-m', `swarm: merge agent ${String(agentIdx)} (${String(fileCount)} files)`,
       ]);
       mergedCount++;
-    } catch (mergeErr) {
+    } catch {
       // Conflict detected — collect conflict files
       try {
         const status = await git(repoRoot, ['diff', '--name-only', '--diff-filter=U']);

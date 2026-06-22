@@ -160,9 +160,10 @@ export class FullCompaction {
     this.agent.emitEvent({ type: 'compaction.cancelled' });
   }
 
-  markCompleted() {
+  markCompleted(result: CompactionResult) {
     this.agent.records.logRecord({
       type: 'full_compaction.complete',
+      ...result,
     });
     this.compacting = null;
     this._compactedHistory.push({
@@ -347,7 +348,7 @@ export class FullCompaction {
         retry_count: retryCount,
         ...usage,
       });
-      this.markCompleted();
+      this.markCompleted(result);
       this.agent.emitEvent({ type: 'compaction.completed', result });
       this.agent.context.applyCompaction(result);
       // Compaction collapses the prefix into a summary, dropping any goal

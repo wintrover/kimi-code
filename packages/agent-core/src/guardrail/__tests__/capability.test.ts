@@ -45,7 +45,7 @@ function makeContext(
     modelCapabilities: makeCapabilities(false),
     tools: [{ name: 'Bash' } as ExecutableTool],
     state: 'PLANNING',
-    telemetry: { records: [], record: () => {}, recordObservation: () => {}, recentMatches: () => 0 },
+    telemetry: { records: [], record: () => {}, recordObservation: () => {}, recentMatches: () => 0, invalidateFingerprints: () => {} },
     config: fullConfig,
   };
 }
@@ -68,10 +68,10 @@ describe('createCapabilityMiddleware', () => {
     await expect(mw(ctx)).rejects.toThrow(KimiError);
     try {
       await mw(ctx);
-    } catch (e) {
-      expect(e).toBeInstanceOf(KimiError);
-      expect((e as KimiError).code).toBe(ErrorCodes.CAPABILITY_MISMATCH);
-      expect((e as KimiError).details).toMatchObject({
+    } catch (error) {
+      expect(error).toBeInstanceOf(KimiError);
+      expect((error as KimiError).code).toBe(ErrorCodes.CAPABILITY_MISMATCH);
+      expect((error as KimiError).details).toMatchObject({
         modelAlias: 'test-model',
         declaredCapabilities: ['thinking'],
         requiredCapability: 'tool_use',
@@ -96,10 +96,10 @@ describe('createCapabilityMiddleware', () => {
     await expect(mw(ctx)).rejects.toThrow(KimiError);
     try {
       await mw(ctx);
-    } catch (e) {
-      expect(e).toBeInstanceOf(KimiError);
-      expect((e as KimiError).code).toBe(ErrorCodes.CAPABILITY_MISMATCH);
-      expect((e as KimiError).details).toMatchObject({
+    } catch (error) {
+      expect(error).toBeInstanceOf(KimiError);
+      expect((error as KimiError).code).toBe(ErrorCodes.CAPABILITY_MISMATCH);
+      expect((error as KimiError).details).toMatchObject({
         modelAlias: 'test-model',
         declaredCapabilities: ['thinking'],
         requiredCapability: 'tool_use',

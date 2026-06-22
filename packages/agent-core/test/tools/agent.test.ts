@@ -678,7 +678,7 @@ describe('AgentTool', () => {
           agentId: 'agent-child',
           profileName: 'coder',
           resumed: false,
-          completion: new Promise<{ result: string }>((_resolve, reject) => {
+          completion: new Promise<{ result: string; capsule: import('@moonshot-ai/protocol').SubagentExecutionCapsule }>((_resolve, reject) => {
             const signal =
               typeof profileNameOrOptions === 'string'
                 ? legacyOptions!.signal
@@ -728,7 +728,7 @@ describe('AgentTool', () => {
             agentId: 'agent-child',
             profileName: 'coder',
             resumed: false,
-            completion: new Promise<{ result: string }>((_resolve, reject) => {
+            completion: new Promise<{ result: string; capsule: import('@moonshot-ai/protocol').SubagentExecutionCapsule }>((_resolve, reject) => {
               const signal =
                 typeof profileNameOrOptions === 'string'
                   ? legacyOptions!.signal

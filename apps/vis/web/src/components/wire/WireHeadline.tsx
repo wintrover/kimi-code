@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import type { AgentRecord, ContentPart, LoopRecordedEvent } from '../../types';
 import { Pill } from '../shared/Pill';
 import { formatBytes } from '../shared/SizePreview';
+import { isCompactionCompleteWithSummary } from './typeGuards';
 
 export interface HeadlineRender {
   /** Main headline content — rendered in the flex-grow slot of the row */
@@ -289,7 +290,10 @@ export function renderHeadline(r: AgentRecord): HeadlineRender {
     case 'full_compaction.cancel':
       return { main: <Dim>cancelled</Dim> };
 
-    case 'full_compaction.complete':
+    case 'full_compaction.complete': {
+      if (!isCompactionCompleteWithSummary(r)) {
+        return { main: <Dim>compaction complete</Dim> };
+      }
       return {
         main: (
           <span className="flex items-center gap-2">
@@ -300,6 +304,7 @@ export function renderHeadline(r: AgentRecord): HeadlineRender {
           </span>
         ),
       };
+    }
 
     case 'plan_mode.enter':
       return {

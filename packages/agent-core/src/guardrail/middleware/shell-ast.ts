@@ -81,6 +81,7 @@ function regexFallbackCheck(command: string): AstViolation[] {
  */
 export function createShellAstMiddleware(): GuardrailMiddleware {
   const _bashPatterns = getPatternsByLanguage('bash');
+  void _bashPatterns;
 
   return async (ctx) => {
     if (!ctx.config.enabled) return ctx;

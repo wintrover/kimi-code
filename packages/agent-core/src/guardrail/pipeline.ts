@@ -57,12 +57,12 @@ export class GuardrailPipeline {
     if (this.auditLogger) {
       void this.auditLogger.logBlock({
         policy,
-        riskLevel: typeof context.riskLevel === 'string' ? context.riskLevel : 'unknown',
+        riskLevel: typeof context['riskLevel'] === 'string' ? context['riskLevel'] : 'unknown',
         description: reason,
-        toolName: typeof context.toolName === 'string' ? context.toolName : undefined,
+        toolName: typeof context['toolName'] === 'string' ? context['toolName'] : undefined,
         normalizedCommand:
-          typeof context.normalizedCommand === 'string' ? context.normalizedCommand : undefined,
-        ruleId: typeof context.ruleId === 'string' ? context.ruleId : undefined,
+          typeof context['normalizedCommand'] === 'string' ? context['normalizedCommand'] : undefined,
+        ruleId: typeof context['ruleId'] === 'string' ? context['ruleId'] : undefined,
       });
     }
 
@@ -72,12 +72,12 @@ export class GuardrailPipeline {
         type: 'guardrail.block',
         time: Date.now(),
         policy,
-        riskLevel: typeof context.riskLevel === 'string' ? context.riskLevel : 'unknown',
+        riskLevel: typeof context['riskLevel'] === 'string' ? context['riskLevel'] : 'unknown',
         reason,
-        toolName: typeof context.toolName === 'string' ? context.toolName : undefined,
+        toolName: typeof context['toolName'] === 'string' ? context['toolName'] : undefined,
         normalizedCommand:
-          typeof context.normalizedCommand === 'string' ? context.normalizedCommand : undefined,
-        ruleId: typeof context.ruleId === 'string' ? context.ruleId : undefined,
+          typeof context['normalizedCommand'] === 'string' ? context['normalizedCommand'] : undefined,
+        ruleId: typeof context['ruleId'] === 'string' ? context['ruleId'] : undefined,
       });
     }
   }

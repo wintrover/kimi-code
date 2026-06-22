@@ -124,6 +124,7 @@ function _hasDescendantOfType(node: TreeSitterNode, types: Set<string>): boolean
   }
   return false;
 }
+void _hasDescendantOfType;
 
 /**
  * Get the first descendant command_name text under a node, if any.

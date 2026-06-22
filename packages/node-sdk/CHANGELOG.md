@@ -1,5 +1,11 @@
 # @moonshot-ai/kimi-code-sdk
 
+## 0.10.0
+
+### Minor Changes
+
+- [`6573402`](https://github.com/MoonshotAI/kimi-code/commit/65734027e481628d38e196fc60ad305dc20fa16e) - Add experimental guardrail security system with five defense layers: schema validation, AST-based code analysis, role-based subagent isolation, execution environment sandboxing, and structured security audit logging. Gated behind the `guardrail` experimental flag.
+
 ## 0.9.3
 
 ### Patch Changes

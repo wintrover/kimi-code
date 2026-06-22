@@ -8,7 +8,7 @@ type Aliases = Record<string, string[]>;
  * (and AJV) sees — it accepts both the canonical name and any alias.
  */
 function buildInputShape(shape: z.ZodRawShape, aliases: Aliases): z.ZodRawShape {
-  const extended: z.ZodRawShape = {};
+  const extended: Record<string, z.ZodTypeAny> = {};
   for (const [key, fieldSchema] of Object.entries(shape)) {
     extended[key] = (fieldSchema as z.ZodTypeAny).optional();
   }
@@ -24,7 +24,7 @@ function buildInputShape(shape: z.ZodRawShape, aliases: Aliases): z.ZodRawShape 
       }
     }
   }
-  return extended;
+  return extended as z.ZodRawShape;
 }
 
 /**
@@ -38,9 +38,9 @@ function createNormalizer(aliases: Aliases) {
   return (args: Record<string, unknown>): Record<string, unknown> => {
     const cleaned = { ...args };
     for (const [canonical, aliasNames] of Object.entries(aliases)) {
-      if (cleaned[canonical] == null) {
+      if (cleaned[canonical] === undefined || cleaned[canonical] === null) {
         for (const alias of aliasNames) {
-          if (cleaned[alias] != null) {
+          if (cleaned[alias] !== undefined && cleaned[alias] !== null) {
             cleaned[canonical] = cleaned[alias];
             break;
           }

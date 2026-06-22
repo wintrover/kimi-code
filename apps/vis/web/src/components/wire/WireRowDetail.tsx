@@ -12,6 +12,7 @@ import { CopyButton } from '../shared/CopyButton';
 import { ImagePreview } from '../shared/ImagePreview';
 import { JsonViewer } from '../shared/JsonViewer';
 import { SizePreview } from '../shared/SizePreview';
+import { isCompactionCompleteWithSummary } from './typeGuards';
 
 interface WireRowDetailProps {
   entry: WireEntry;
@@ -123,7 +124,6 @@ function renderFriendly(record: AgentRecord) {
         </div>
       );
     case 'context.apply_compaction':
-    case 'full_compaction.complete':
       return (
         <div className="grid grid-cols-[140px_1fr] gap-x-3 gap-y-[2px]">
           <FieldRow label="summary" wide>
@@ -142,6 +142,29 @@ function renderFriendly(record: AgentRecord) {
           </FieldRow>
         </div>
       );
+    case 'full_compaction.complete': {
+      if (!isCompactionCompleteWithSummary(record)) {
+        return <div className="text-fg-3">compaction complete (no data)</div>;
+      }
+      return (
+        <div className="grid grid-cols-[140px_1fr] gap-x-3 gap-y-[2px]">
+          <FieldRow label="summary" wide>
+            <SizePreview label="summary" sizeBytes={record.summary.length} preview={record.summary}>
+              <pre className="whitespace-pre-wrap break-words text-fg-1">{record.summary}</pre>
+            </SizePreview>
+          </FieldRow>
+          <FieldRow label="compactedCount">
+            <span className="text-[var(--color-sev-info)]">{record.compactedCount}</span>
+          </FieldRow>
+          <FieldRow label="tokensBefore">
+            <span className="text-[var(--color-sev-info)]">{record.tokensBefore}</span>
+          </FieldRow>
+          <FieldRow label="tokensAfter">
+            <span className="text-[var(--color-sev-info)]">{record.tokensAfter}</span>
+          </FieldRow>
+        </div>
+      );
+    }
     default:
       return <JsonViewer value={record} defaultOpenDepth={2} />;
   }

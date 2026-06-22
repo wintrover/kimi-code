@@ -998,13 +998,13 @@ describe('ReadTool file_path alias normalization', () => {
 describe('ReadTool limit alias normalization', () => {
   it('limit alias normalizes to n_lines', () => {
     const result = ReadInputSchema.normalizeInput({ path: 'test.txt', limit: 5 });
-    expect(result.n_lines).toBe(5);
+    expect((result as Record<string, unknown>)['n_lines']).toBe(5);
     expect(result).not.toHaveProperty('limit');
   });
 
   it('canonical n_lines wins over limit alias when both are provided', () => {
     const result = ReadInputSchema.normalizeInput({ path: 'test.txt', n_lines: 10, limit: 20 });
-    expect(result.n_lines).toBe(10);
+    expect((result as Record<string, unknown>)['n_lines']).toBe(10);
     expect(result).not.toHaveProperty('limit');
   });
 

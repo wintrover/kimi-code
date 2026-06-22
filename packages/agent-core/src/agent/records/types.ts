@@ -74,7 +74,7 @@ export interface AgentRecordEvents {
   };
 
   'full_compaction.cancel': {};
-  'full_compaction.complete': {};
+  'full_compaction.complete': CompactionResult;
   'micro_compaction.apply': { cutoff: number };
 
   'context.append_message': { message: ContextMessage };
