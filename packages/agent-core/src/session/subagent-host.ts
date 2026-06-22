@@ -27,6 +27,11 @@ import {
   prepareSystemPromptContext,
   type ResolvedAgentProfile,
 } from '../profile';
+import {
+  type AgentRole,
+  getRoleProfile,
+  filterToolsForRole,
+} from './subagent-roles';
 import { classifySubagentError } from './subagent-error-mapper';
 import { buildExecutionJournal } from './subagent-journal';
 import type { SubagentExecutionCapsule, SubagentExecutionJournal } from '@moonshot-ai/protocol';
@@ -105,6 +110,8 @@ export interface RunSubagentOptions {
 export interface SpawnSubagentOptions extends RunSubagentOptions {
   readonly profileName: string;
   readonly swarmItem?: string;
+  /** Role assigned to the spawned subagent. Defaults to `'executor'`. */
+  readonly role?: AgentRole;
 }
 
 type SubagentCompletion = {
@@ -163,11 +170,17 @@ export class SessionSubagentHost {
     }
   >();
   private recoveryDepth = 0;
+  private ownerRole: AgentRole = 'orchestrator';
 
   constructor(
     private readonly session: Session,
     private readonly ownerAgentId: string,
   ) {}
+
+  /** Update the role assigned to this host's owner agent. */
+  setOwnerRole(role: AgentRole): void {
+    this.ownerRole = role;
+  }
 
   private resolveSubagentModel(parent: Agent): string | undefined {
     return this.session.options.config?.subagentModel ?? parent.config.modelAlias;
@@ -180,6 +193,14 @@ export class SessionSubagentHost {
     const profile = this.resolveProfile(parent, options.profileName);
     const outputMode = options.output_mode ?? 'text';
     const isolateWorkspace = options.isolate_workspace ?? true;
+    const role: AgentRole | undefined = options.role;
+
+    // Enforce canSpawnSubagents for the owner role.
+    if (!getRoleProfile(this.ownerRole).canSpawnSubagents) {
+      throw new Error(
+        `Role "${this.ownerRole}" is not allowed to spawn subagents`,
+      );
+    }
     const { id, agent } = await this.session.createAgent(
       { type: 'sub', generate: parent.rawGenerate },
       { parentAgentId: this.ownerAgentId, swarmItem: options.swarmItem },
@@ -220,6 +241,7 @@ export class SessionSubagentHost {
           outputMode,
           workspacePaths: artifactWorkspacePaths,
           isolateWorkspace,
+          role,
         });
         return await this.runPromptTurn(parent, id, agent, profile.name, runOptions);
       } catch (error) {
@@ -655,6 +677,7 @@ export class SessionSubagentHost {
       readonly workspacePaths?: SubagentWorkspacePaths;
       readonly isolateWorkspace?: boolean;
       readonly inheritUserTools?: boolean;
+      readonly role?: AgentRole;
     },
   ): Promise<void> {
     const outputMode = options?.outputMode ?? 'text';
@@ -681,6 +704,29 @@ export class SessionSubagentHost {
 
     if (options?.inheritUserTools !== false) {
       child.tools.inheritUserTools(parent.tools);
+    }
+
+    // Apply role-based restrictions.
+    const role = options?.role;
+    if (role !== undefined) {
+      const roleProfile = getRoleProfile(role);
+
+      // Filter tools to only those permitted by the role.
+      const activeToolNames = child.tools.loopTools.map((t) => t.name);
+      const filtered = filterToolsForRole(activeToolNames, role);
+      child.tools.setActiveTools(filtered);
+
+      // Propagate the role to this child's own subagent host so that
+      // nested spawn checks honour the role hierarchy.
+      child.subagentHost?.setOwnerRole(role);
+
+      // Enforce maxContextDepth by injecting a system reminder.
+      if (roleProfile.maxContextDepth !== undefined) {
+        child.context.appendSystemReminder(
+          `Your context is limited to the most recent ${roleProfile.maxContextDepth} messages due to your assigned role (${role}). Older messages may be pruned automatically.`,
+          { kind: 'system_trigger', name: 'role_context_limit' },
+        );
+      }
     }
 
     const childCaps = child.config.data().modelCapabilities;
@@ -819,7 +865,7 @@ async function runReasoningBootstrap(
     }, signal);
 
     if (result.isError === true) {
-      throw new Error(
+      throw new TypeError(
         typeof result.output === 'string'
           ? result.output
           : 'sequential-thinking returned an error',
@@ -839,7 +885,7 @@ async function runReasoningBootstrap(
     const message = error instanceof Error ? error.message : String(error);
     child.log.warn('reasoning bootstrap failed', { profileName, error: message });
     if (options.isCriticalTask === true) {
-      throw new Error(`Critical task reasoning bootstrap failed: ${message}`);
+      throw new Error(`Critical task reasoning bootstrap failed: ${message}`, { cause: error });
     }
   }
 }

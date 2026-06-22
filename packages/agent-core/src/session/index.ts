@@ -549,7 +549,7 @@ export class Session {
   private refreshAgentBuiltinTools(): void {
     for (const agent of this.readyAgents()) {
       if (!agent.config.hasProvider) continue;
-      agent.tools.initializeBuiltinTools();
+      void agent.tools.initializeBuiltinTools();
     }
   }
 
@@ -698,6 +698,8 @@ export class Session {
 }
 
 export * from './subagent-host';
+export type { AgentRole, RoleProfile } from './subagent-roles';
+export { ROLE_PROFILES, getRoleProfile, filterToolsForRole, isToolAllowedForRole } from './subagent-roles';
 
 function initCompletionReminder(agentsMd: string): string {
   const latest =

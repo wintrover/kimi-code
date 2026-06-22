@@ -28,6 +28,14 @@ export const FLAG_DEFINITIONS = [
     default: false,
     surface: 'core',
   },
+  {
+    id: 'guardrail',
+    title: 'Guardrail overrides',
+    description: 'Scoped security guardrails: tool manifests, untrusted content policy, role-based subagent isolation, and security sections in system prompts.',
+    env: 'KIMI_CODE_EXPERIMENTAL_GUARDRAIL',
+    default: false,
+    surface: 'core',
+  },
 ] as const satisfies readonly FlagDefinitionInput[];
 
 /** Literal union of registered flag ids. */

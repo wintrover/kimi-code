@@ -1,3 +1,10 @@
 export { createCapabilityMiddleware } from './capability.js';
 export { createCircuitBreakerMiddleware } from './circuit-breaker.js';
 export { createFsmMiddleware } from './fsm.js';
+export { createPolicyMiddleware } from './policy.js';
+export { createStrictSchemaMiddleware } from './strict-schema.js';
+export { createSystemLockMiddleware } from './system-lock.js';
+export { createShellAstMiddleware } from './shell-ast.js';
+export { createIntentGuardMiddleware } from './intent-guard.js';
+export { createToolAllowlistMiddleware } from './tool-allowlist.js';
+export { createCodeBlockAstMiddleware } from './code-block-ast.js';

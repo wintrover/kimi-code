@@ -60,7 +60,7 @@ export class ConfigState {
       this._systemPrompt = changed.systemPrompt;
     }
     if (this.hasProvider && (changed.cwd !== undefined || changed.modelAlias)) {
-      this.agent.tools.initializeBuiltinTools();
+      void this.agent.tools.initializeBuiltinTools();
     }
     this.agent.emitStatusUpdated();
   }

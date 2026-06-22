@@ -40,6 +40,7 @@ export {
   handleTitleCommand,
 } from './session';
 export { handleUndoCommand } from './undo';
+export { handleSecurityLogCommand } from './security';
 export {
   promptApiKey,
   promptCatalogProviderSelection,

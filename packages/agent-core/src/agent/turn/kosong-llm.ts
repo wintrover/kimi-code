@@ -25,6 +25,7 @@ import {
   type Message,
   type ModelCapability,
   type StreamedMessagePart,
+  type Tool,
 } from '@moonshot-ai/kosong';
 
 import type {
@@ -113,7 +114,7 @@ export class KosongLLM implements LLM {
     const result = await this.generate(
       effectiveProvider,
       this.systemPrompt,
-      [...params.tools],
+      params.tools.map(enforceStrictTool),
       params.messages,
       callbacks,
       generateOptions(params, {
@@ -263,6 +264,23 @@ function buildKosongCallbacks(
           ...delta,
         });
       }
+    },
+  };
+}
+
+/**
+ * Ensures the tool definition carries `strict: true` and that its `parameters`
+ * schema has `additionalProperties: false` so the provider enforces structured
+ * output on tool-call arguments.
+ */
+function enforceStrictTool(tool: Tool): Tool {
+  const params = tool.parameters as Record<string, unknown>;
+  return {
+    ...tool,
+    strict: tool.strict ?? true,
+    parameters: {
+      ...params,
+      additionalProperties: params['additionalProperties'] ?? false,
     },
   };
 }

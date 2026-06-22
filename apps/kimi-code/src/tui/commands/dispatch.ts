@@ -55,6 +55,7 @@ import {
   handleInitCommand,
   handleTitleCommand,
 } from './session';
+import { handleSecurityLogCommand } from './security';
 import { handleUndoCommand } from './undo';
 
 // ---------------------------------------------------------------------------
@@ -337,6 +338,9 @@ async function handleBuiltInSlashCommand(
       return;
     case 'undo':
       await handleUndoCommand(host, args);
+      return;
+    case 'security-log':
+      handleSecurityLogCommand(host, args);
       return;
     default:
       host.showError(`Unknown slash command: /${String(name)}`);

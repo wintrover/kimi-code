@@ -46,6 +46,8 @@ import {
   type AgentRecordPersistence,
 } from './records';
 import { ReplayBuilder } from './replay';
+import { flags } from '#/flags/resolver';
+import { appendSecuritySections } from './turn/system-prompt';
 import { SkillManager } from './skill';
 import { SwarmMode } from './swarm';
 import { ToolManager } from './tool/index';
@@ -300,13 +302,16 @@ export class Agent {
   }
 
   useProfile(profile: ResolvedAgentProfile, context?: PreparedSystemPromptContext): void {
-    const systemPrompt = profile.systemPrompt({
+    const basePrompt = profile.systemPrompt({
       osEnv: this.kaos.osEnv,
       cwd: this.config.cwd,
       skills: this.skills?.registry,
       cwdListing: context?.cwdListing,
       agentsMd: context?.agentsMd,
     });
+    const systemPrompt = flags.enabled('guardrail')
+      ? appendSecuritySections(basePrompt, profile.tools)
+      : basePrompt;
     this.config.update({ profileName: profile.name, systemPrompt });
     this.tools.setActiveTools(profile.tools);
   }

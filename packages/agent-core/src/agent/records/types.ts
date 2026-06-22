@@ -100,6 +100,38 @@ export interface AgentRecordEvents {
     actor?: GoalActor;
   };
   'goal.clear': {};
+
+  // ---- Guardrail audit records ------------------------------------------
+
+  'guardrail.block': {
+    policy: string;
+    ruleId?: string;
+    riskLevel: string;
+    reason: string;
+    toolName?: string;
+    normalizedCommand?: string;
+  };
+
+  'guardrail.warn': {
+    policy: string;
+    ruleId?: string;
+    riskLevel: string;
+    reason: string;
+    toolName?: string;
+  };
+
+  'guardrail.override': {
+    policy: string;
+    ruleId?: string;
+    originalAction: string;
+    overrideReason: string;
+  };
+
+  'guardrail.false_positive': {
+    originalBlockId: string;
+    ruleId: string;
+    userReason: string;
+  };
 }
 
 export type AgentRecord = {

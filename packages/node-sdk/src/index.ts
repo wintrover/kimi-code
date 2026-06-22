@@ -62,6 +62,17 @@ export {
 } from '@moonshot-ai/agent-core';
 export type { LogContext, LogLevel, LogPayload, Logger } from '@moonshot-ai/agent-core';
 
+// Security audit — logger + aggregator for the live dashboard.
+export { SecurityAuditLogger, SecurityAggregator } from '@moonshot-ai/agent-core';
+export type {
+  SecurityAuditContext,
+  SecurityAuditDecision,
+  SecurityAuditEvent,
+  SecurityAuditViolation,
+  SecurityRuleSummary,
+  SecuritySummary,
+} from '@moonshot-ai/agent-core';
+
 // Process-wide HTTP proxy bootstrap — installed once at CLI startup so all
 // outbound fetch honors HTTP_PROXY / HTTPS_PROXY / NO_PROXY.
 export { installGlobalProxyDispatcher } from '@moonshot-ai/agent-core';

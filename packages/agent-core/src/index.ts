@@ -80,3 +80,15 @@ export type {
   ExecutableToolSuccessResult,
   ExecutableToolErrorResult,
 } from './loop/types';
+
+// ─── Security audit (logger + aggregator) ────────────────────────────────────
+export { SecurityAuditLogger, SecurityAggregator } from './guardrail/audit/index.js';
+export type {
+  SecurityAuditContext,
+  SecurityAuditDecision,
+  SecurityAuditEvent,
+  SecurityAuditViolation,
+  AstViolationEntry,
+  SecurityRuleSummary,
+  SecuritySummary,
+} from './guardrail/audit/index.js';

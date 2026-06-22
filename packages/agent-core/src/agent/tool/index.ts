@@ -1,4 +1,5 @@
 import { uniq } from '@antfu/utils';
+import { createKaos, type ExecutionBackend } from '@moonshot-ai/kaos';
 import type { ChatProvider, Tool } from '@moonshot-ai/kosong';
 import picomatch from 'picomatch';
 
@@ -59,7 +60,7 @@ export class ToolManager {
     this.resolverContext = this.createResolverContext();
     this.attachMcpTools();
     if (agent.config.hasProvider) {
-      this.initializeBuiltinTools();
+      void this.initializeBuiltinTools();
     }
   }
 
@@ -390,7 +391,7 @@ export class ToolManager {
     return { ...this.store };
   }
 
-  initializeBuiltinTools() {
+  async initializeBuiltinTools() {
     const {
       kaos,
       toolServices,
@@ -410,6 +411,10 @@ export class ToolManager {
       this.enabledTools.has('TaskOutput') &&
       this.enabledTools.has('TaskStop');
     const goalToolsEnabled = this.agent.type === 'main';
+    const bashBackend = (this.agent.kimiConfig?.executionBackend as ExecutionBackend | undefined) ?? undefined;
+    const bashKaos = bashBackend !== null && bashBackend !== 'local'
+      ? await createKaos(bashBackend, { cwd })
+      : kaos;
     this.builtinTools = new Map(
       [
         new b.ReadTool(kaos, workspace),
@@ -417,7 +422,7 @@ export class ToolManager {
         new b.EditTool(kaos, workspace),
         new b.GrepTool(kaos, workspace),
         new b.GlobTool(kaos, workspace),
-        new b.BashTool(kaos, cwd, background, {
+        new b.BashTool(bashKaos, cwd, background, {
           allowBackground,
         }),
         (modelCapabilities.image_in || modelCapabilities.video_in) &&

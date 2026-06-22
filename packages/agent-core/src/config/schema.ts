@@ -265,6 +265,7 @@ export const KimiConfigSchema = z.object({
   defaultSwarmMode: z.boolean().optional(),
   subagentModel: z.string().optional(),
   executionGuardrails: GuardrailConfigSchema.optional(),
+  executionBackend: z.enum(['local', 'docker', 'bubblewrap']).optional(),
   experimental: ExperimentalConfigSchema.optional(),
   telemetry: z.boolean().optional(),
   raw: z.record(z.string(), z.unknown()).optional(),

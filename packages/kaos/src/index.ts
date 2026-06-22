@@ -15,6 +15,27 @@ export {
   KaosShellNotFoundError,
 } from './errors';
 export { LocalKaos } from './local';
+export { BubblewrapKaos } from './bubblewrap';
+export type { BubblewrapKaosOptions } from './bubblewrap';
+export { DockerKaos } from './docker';
+export type { DockerKaosOptions } from './docker';
+export {
+  type ExecutionBackend,
+  type CreateKaosOptions,
+  createKaos,
+} from './factory';
+export {
+  type DockerProfile,
+  DOCKER_PROFILES,
+  getProfile,
+  buildDockerImage,
+} from './docker-profiles';
+export { BackendDetector } from './backend-detector';
+export type {
+  BackendType,
+  BackendDetectionResult,
+  BackendDetectorOptions,
+} from './backend-detector';
 export {
   chdir,
   exec,

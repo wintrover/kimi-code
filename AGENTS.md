@@ -61,6 +61,14 @@ This is a TypeScript monorepo built for agent-assisted development. Keep the roo
 - Rules that only affect a specific directory: update the nearest sub-directory `AGENTS.md`.
 - Keep instruction updates focused and supported by code facts.
 
+## Security Guardrails
+
+- **Never** use `--no-verify` to skip git hooks. Git hooks enforce quality gates that must not be bypassed.
+- **Never** use `--allow-empty` to force commits with no staged changes. Commits must always represent meaningful work.
+- **Never** manipulate git hooks directly (e.g. `chmod -x`, `git config core.hooksPath` to an empty directory, or editing `.git/hooks/*`). Hook modifications go through the project's guardrail configuration system.
+- **Never** use emergency bypass techniques to circumvent commit validation or CI checks.
+- If a commit or hook is genuinely blocking progress, use the `force_commit` tool or escalate through the guardrail system — do not work around protections with shell flags.
+
 ## Workflow Requirements
 
 - Prefer `rg` / `rg --files` when reading code.
