@@ -40,6 +40,7 @@ import {
   userCancellationReason,
 } from '../utils/abort';
 import { collectGitContext } from './git-context';
+import type { ContextBudgetManager } from './context-budget';
 import type { Session } from './index';
 import {
   SubagentBatch,
@@ -175,6 +176,7 @@ export class SessionSubagentHost {
   constructor(
     private readonly session: Session,
     private readonly ownerAgentId: string,
+    private readonly budgetManager?: ContextBudgetManager,
   ) {}
 
   /** Update the role assigned to this host's owner agent. */
@@ -205,6 +207,9 @@ export class SessionSubagentHost {
       { type: 'sub', generate: parent.rawGenerate },
       { parentAgentId: this.ownerAgentId, swarmItem: options.swarmItem },
     );
+
+    // Compute the subagent token budget from the budget manager, if available.
+    const subagentBudget = this.budgetManager?.getSubagentBudget();
 
     let artifactWorkspacePaths: SubagentWorkspacePaths | undefined;
     if (outputMode === 'artifact') {
@@ -242,6 +247,7 @@ export class SessionSubagentHost {
           workspacePaths: artifactWorkspacePaths,
           isolateWorkspace,
           role,
+          subagentBudget,
         });
         return await this.runPromptTurn(parent, id, agent, profile.name, runOptions);
       } catch (error) {
@@ -678,6 +684,7 @@ export class SessionSubagentHost {
       readonly isolateWorkspace?: boolean;
       readonly inheritUserTools?: boolean;
       readonly role?: AgentRole;
+      readonly subagentBudget?: number;
     },
   ): Promise<void> {
     const outputMode = options?.outputMode ?? 'text';
@@ -691,6 +698,17 @@ export class SessionSubagentHost {
       modelAlias: this.resolveSubagentModel(parent),
       thinkingLevel: parent.config.thinkingLevel,
     });
+
+    // TODO: When AgentConfigUpdateData supports a `maxTokens` field, apply
+    // the subagent budget here:
+    //
+    //   if (options?.subagentBudget !== undefined) {
+    //     child.config.update({ maxTokens: options.subagentBudget });
+    //   }
+    //
+    // This would cap the child's output token generation to the budget
+    // computed by ContextBudgetManager.getSubagentBudget(), preventing
+    // subagents from consuming more than their fair share of the context window.
 
     const context = await prepareSystemPromptContext(
       this.session.systemContextKaos(child.kaos.getcwd()),

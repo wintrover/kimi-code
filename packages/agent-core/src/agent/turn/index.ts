@@ -41,6 +41,10 @@ import { USER_PROMPT_ORIGIN, type PromptOrigin } from '../context';
 import { renderUserPromptHookBlockResult, renderUserPromptHookResult } from '../../session/hooks';
 import { canonicalTelemetryArgs, isPlainRecord } from './canonical-args';
 import { ToolCallDeduplicator } from './tool-dedup';
+import {
+  runBeforeStepPipeline,
+  type StepMiddleware,
+} from '#/session/step-middleware';
 
 interface ActiveTurn {
   readonly turnId: number;
@@ -428,6 +432,8 @@ export class TurnFlow {
     this.currentStepByTurn.set(turnId, 0);
     this.agent.telemetry.track('turn_started', { mode: telemetryMode });
     this.agent.fullCompaction.resetForTurn();
+    // Initialize turn boundary — safe no-op if it fails (enhancement, not required)
+    try { this.agent.turnBoundary.start(); } catch { /* ignore */ }
     this.agent.usage.beginTurn();
     this.agent.emitEvent({ type: 'turn.started', turnId, origin });
     this.agent.context.appendUserMessage(input, origin);
@@ -502,6 +508,8 @@ export class TurnFlow {
         inputData: { turnId, reason: 'cancelled' },
       });
     }
+    // End the turn boundary — safe no-op if it fails (enhancement, not required)
+    try { void this.agent.turnBoundary.end(); } catch { /* ignore */ }
     this.agent.emitEvent(ended);
     if (standalone && this.currentId === turnId) {
       this.activeTurn = null;
@@ -620,7 +628,17 @@ export class TurnFlow {
             beforeStep: async ({ signal: stepSignal }) => {
               this.flushSteerBuffer();
               this.agent.microCompaction.detect();
+              // Direct call — propagates overflow errors naturally (throws KimiError)
               await this.agent.fullCompaction.beforeStep(stepSignal);
+              // Pipeline for budget + recovery (compaction excluded — handled above)
+              const pipelineResult = await runBeforeStepPipeline(
+                this.buildBeforeStepPipeline(),
+                { signal: stepSignal, tokenCount: currentTurnInputTokens(this.agent.usage.data().currentTurn) ?? 0, turnId },
+                (name, error) => { this.agent.log.warn(`beforeStep middleware "${name}" failed`, { error }); },
+              );
+              if (pipelineResult.recoveryInjections !== undefined && pipelineResult.recoveryInjections.length > 0) {
+                await this.runRecoveryLogic(pipelineResult.recoveryInjections);
+              }
               await this.agent.injection.inject();
               deduper.beginStep();
               return;
@@ -893,6 +911,24 @@ export class TurnFlow {
   private shouldTrackApiError(turnId: number): boolean {
     const failure = this.stepFailureByTurn.get(turnId);
     return failure?.reason === 'error' && failure.activeStep !== undefined;
+  }
+
+  private buildBeforeStepPipeline(): readonly StepMiddleware[] {
+    // TODO: Add BudgetMiddleware and RecoveryMiddleware when Agent exposes
+    // budgetManager, turnBoundary, checkpointStore, and recoveryPolicy.
+    return [];
+  }
+
+  /**
+   * DRY recovery injection — shared between beforeStep pipeline and overflow recovery.
+   */
+  private async runRecoveryLogic(injections: readonly string[]): Promise<void> {
+    for (const injection of injections) {
+      this.agent.context.appendSystemReminder(injection, {
+        kind: 'system_trigger',
+        name: 'recovery',
+      });
+    }
   }
 }
 

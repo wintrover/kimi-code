@@ -41,6 +41,11 @@ import {
 
 type CompactionTelemetryTrigger = CompactionBeginData['source'] | 'manual-with-prompt' | 'unknown';
 
+/** beforeStep() 반환 타입 — 파이프라인 미들웨어가 사용 */
+export interface BeforeStepResult {
+  readonly action: 'continue' | 'compacting' | 'blocked';
+}
+
 export interface CompactedHistory {
   text: string;
 }
@@ -180,11 +185,14 @@ export class FullCompaction {
     await this.block(signal);
   }
 
-  async beforeStep(signal: AbortSignal): Promise<void> {
+  async beforeStep(signal: AbortSignal): Promise<BeforeStepResult> {
     this.checkAutoCompaction();
+    if (this.compacting) return { action: 'compacting' };
     if (this.strategy.shouldBlock(this.tokenCountWithPending)) {
       await this.block(signal);
+      return { action: 'blocked' };
     }
+    return { action: 'continue' };
   }
 
   async afterStep(): Promise<void> {

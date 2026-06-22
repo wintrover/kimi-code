@@ -318,6 +318,7 @@ export class Agent {
 
   async resume(): Promise<{ warning?: string }> {
     const result = await this.records.replay();
+    await this.tools.ready();
     this.goal.normalizeAfterReplay();
     await this.background.loadFromDisk();
     await this.background.reconcile();

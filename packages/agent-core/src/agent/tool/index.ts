@@ -55,6 +55,7 @@ export class ToolManager {
   /** Agent-level environment state store, shared with env tools and BashTool. */
   readonly envStore = new b.AgentEnvStore();
   private mcpToolStatusUnsubscribe: (() => void) | undefined;
+  private _initPromise: Promise<void> | undefined;
 
   constructor(protected readonly agent: Agent) {
     this.resolverContext = this.createResolverContext();
@@ -62,6 +63,11 @@ export class ToolManager {
     if (agent.config.hasProvider) {
       void this.initializeBuiltinTools();
     }
+  }
+
+  /** Await to guarantee builtin tools are loaded. Throws if init failed. */
+  async ready(): Promise<void> {
+    await this._initPromise;
   }
 
   private createResolverContext(): ToolResolverContext {
@@ -391,7 +397,21 @@ export class ToolManager {
     return { ...this.store };
   }
 
-  async initializeBuiltinTools() {
+  /**
+   * (Re-)initialize builtin tools. Every call updates `_initPromise` so that
+   * `ready()` always resolves after the *latest* initialization — including
+   * re-initializations triggered by ConfigState.update().
+   */
+  initializeBuiltinTools(): Promise<void> {
+    const promise = this._doInitializeBuiltinTools().catch((error) => {
+      this.agent.log.error('builtin tools initialization failed', { error });
+      throw error;
+    });
+    this._initPromise = promise;
+    return promise;
+  }
+
+  private async _doInitializeBuiltinTools() {
     const {
       kaos,
       toolServices,
@@ -412,7 +432,7 @@ export class ToolManager {
       this.enabledTools.has('TaskStop');
     const goalToolsEnabled = this.agent.type === 'main';
     const bashBackend = (this.agent.kimiConfig?.executionBackend as ExecutionBackend | undefined) ?? undefined;
-    const bashKaos = bashBackend !== null && bashBackend !== 'local'
+    const bashKaos = bashBackend !== undefined && bashBackend !== 'local'
       ? await createKaos(bashBackend, { cwd })
       : kaos;
     this.builtinTools = new Map(

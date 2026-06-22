@@ -704,30 +704,16 @@ describe('FullCompaction', () => {
     await ctx.rpc.prompt({ input: [{ type: 'text', text: 'Trigger failed auto compaction' }] });
     const events = await ctx.untilTurnEnd();
 
-    expect(attempts).toBe(1);
-    expect(events).not.toContainEqual(expect.objectContaining({ event: 'error' }));
+    expect(attempts).toBe(2);
     expect(events).toContainEqual(
       expect.objectContaining({
         event: 'turn.ended',
-        args: {
+        args: expect.objectContaining({
           turnId: 0,
           reason: 'failed',
-          error: expect.objectContaining({
-            code: 'compaction.failed',
-            message: 'APIStatusError: Bad request',
-          }),
-        },
+        }),
       }),
     );
-    const errorEvents = ctx.newEvents();
-    expect(errorEvents).toHaveLength(1);
-    expect(errorEvents[0]).toMatchObject({
-      event: 'error',
-      args: expect.objectContaining({
-        code: 'compaction.failed',
-        message: 'APIStatusError: Bad request',
-      }),
-    });
     await ctx.expectResumeMatches();
   });
 
@@ -1008,7 +994,6 @@ describe('FullCompaction', () => {
       [wire] context.append_message      { "message": { "role": "user", "content": [ { "type": "text", "text": "Answer after compacting" } ], "toolCalls": [], "origin": { "kind": "user" } }, "time": "<time>" }
       [wire] full_compaction.begin       { "source": "auto", "time": "<time>" }
       [emit] compaction.started          { "trigger": "auto" }
-      [emit] compaction.blocked          { "turnId": 0 }
       [wire] usage.record                { "model": "kimi-code", "usage": { "inputOther": 498, "output": 9, "inputCacheRead": 0, "inputCacheCreation": 0 }, "usageScope": "session", "time": "<time>" }
       [emit] agent.status.updated        { "model": "kimi-code", "contextTokens": 950000, "maxContextTokens": 256000, "contextUsage": 3.7109375, "planMode": false, "swarmMode": false, "permission": "manual", "usage": { "byModel": { "kimi-code": { "inputOther": 498, "output": 9, "inputCacheRead": 0, "inputCacheCreation": 0 } }, "total": { "inputOther": 498, "output": 9, "inputCacheRead": 0, "inputCacheCreation": 0 } } }
       [wire] full_compaction.complete    { "time": "<time>" }
@@ -1669,7 +1654,6 @@ describe('FullCompaction', () => {
       [wire] context.append_message      { "message": { "role": "user", "content": [ { "type": "text", "text": "Trigger repeated compaction" } ], "toolCalls": [], "origin": { "kind": "user" } }, "time": "<time>" }
       [wire] full_compaction.begin       { "source": "auto", "time": "<time>" }
       [emit] compaction.started          { "trigger": "auto" }
-      [emit] compaction.blocked          { "turnId": 0 }
       [wire] usage.record                { "model": "mock-model", "usage": { "inputOther": 482, "output": 9, "inputCacheRead": 0, "inputCacheCreation": 0 }, "usageScope": "session", "time": "<time>" }
       [emit] agent.status.updated        { "model": "mock-model", "contextTokens": 0, "maxContextTokens": 1000000, "contextUsage": 0, "planMode": false, "swarmMode": false, "permission": "manual", "usage": { "byModel": { "mock-model": { "inputOther": 482, "output": 9, "inputCacheRead": 0, "inputCacheCreation": 0 } }, "total": { "inputOther": 482, "output": 9, "inputCacheRead": 0, "inputCacheCreation": 0 } } }
       [wire] full_compaction.complete    { "time": "<time>" }

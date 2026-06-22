@@ -701,6 +701,18 @@ export * from './subagent-host';
 export type { AgentRole, RoleProfile } from './subagent-roles';
 export { ROLE_PROFILES, getRoleProfile, filterToolsForRole, isToolAllowedForRole } from './subagent-roles';
 
+// Turn state machine, boundary, checkpoint, budget, and hydrator (context recovery)
+export { TurnStateMachine, TurnPhase, type TurnStateSnapshot, type PhaseHistoryEntry } from './turn-state';
+export { TurnBoundary, type TurnBoundaryOptions, type CompactionRequest } from './turn-boundary';
+export { MemoryCheckpointer, FileCheckpointer, type CheckpointStore, type TurnContextSnapshot } from './checkpoint';
+export { ContextBudgetManager, BudgetAction, DEFAULT_BUDGET_CONFIG, type BudgetEvaluation, type BudgetConfig } from './context-budget';
+export {
+  buildRecoveryContext,
+  buildIdempotencyInjection,
+  buildRecoveryInjection,
+  type RecoveryContext,
+} from './hydrator';
+
 function initCompletionReminder(agentsMd: string): string {
   const latest =
     agentsMd.trim().length === 0
