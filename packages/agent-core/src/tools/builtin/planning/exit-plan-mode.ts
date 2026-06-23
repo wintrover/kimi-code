@@ -83,6 +83,7 @@ export class ExitPlanModeTool implements BuiltinTool<ExitPlanModeInput> {
   readonly name = 'ExitPlanMode' as const;
   readonly description: string = DESCRIPTION;
   readonly parameters: Record<string, unknown> = toInputJsonSchema(ExitPlanModeInputSchema);
+  readonly normalizeArgs = normalizeExitPlanModeArgs;
 
   constructor(private readonly agent: Agent) {}
 
@@ -207,6 +208,34 @@ function hasNoReservedOptionLabels(options: readonly ExitPlanModeOption[]): bool
 
 function normalizeOptionLabel(label: string): string {
   return label.trim().toLowerCase();
+}
+
+function normalizeExitPlanModeArgs(
+  args: Record<string, unknown>,
+): Record<string, unknown> {
+  const { options } = args;
+  if (options === undefined) return args;
+  if (options === null) {
+    const { options: _, ...rest } = args;
+    return rest;
+  }
+  if (typeof options === 'string') {
+    return { ...args, options: [{ label: options }] };
+  }
+  if (!Array.isArray(options)) {
+    if (
+      typeof options === 'object' &&
+      options !== null &&
+      'label' in (options as Record<string, unknown>)
+    ) {
+      return { ...args, options: [options] };
+    }
+    return args;
+  }
+  const normalized = (options as unknown[]).map((item) =>
+    typeof item === 'string' ? { label: item } : item,
+  );
+  return { ...args, options: normalized };
 }
 
 function formatPlanForOutput(plan: string, path: string | undefined): string {
