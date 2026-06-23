@@ -47,7 +47,7 @@ describe('TurnStateMachine', () => {
 
   it('rejects invalid transitions', () => {
     const sm = new TurnStateMachine();
-    expect(() => sm.transition('executing')).toThrow('Invalid turn state transition: idle → executing');
+    expect(() => { sm.transition('executing'); }).toThrow('Invalid turn state transition: idle → executing');
   });
 
   it('supports emergency cleaving from executing', () => {

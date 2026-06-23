@@ -55,7 +55,7 @@ function makeAgent(
     cwd: process.cwd(),
     modelAlias: MOCK_PROVIDER.model,
   });
-  agent.tools.initializeBuiltinTools();
+  void agent.tools.initializeBuiltinTools();
   agent.tools.setActiveTools(['Skill']);
   return agent;
 }
@@ -202,7 +202,7 @@ describe('ToolManager SkillTool registration', () => {
       mainAgent.config.update({
         modelAlias: MOCK_PROVIDER.model,
       });
-      mainAgent.tools.initializeBuiltinTools();
+      void mainAgent.tools.initializeBuiltinTools();
       mainAgent.tools.setActiveTools(['Skill']);
 
       expect(mainAgent.tools.loopTools.find((tool) => tool.name === 'Skill')).toBeInstanceOf(

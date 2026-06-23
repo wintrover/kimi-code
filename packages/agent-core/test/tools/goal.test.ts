@@ -297,7 +297,7 @@ describe('ToolManager goal tool registration', () => {
     // configure() gives the agent a provider so builtin tools can initialize.
     ctxAgent.configure({ tools: ['Read', 'CreateGoal', 'GetGoal', 'SetGoalBudget'] });
     // Re-run registration so the gate reads the scoped flag resolver state.
-    ctxAgent.agent.tools.initializeBuiltinTools();
+    void ctxAgent.agent.tools.initializeBuiltinTools();
     return ctxAgent.agent.tools.loopTools.map((tool) => tool.name);
   }
 
@@ -321,7 +321,7 @@ describe('ToolManager goal tool registration', () => {
       goal: store,
     });
     ctxAgent.configure({ tools: ['Read', 'CreateGoal', 'GetGoal', 'SetGoalBudget', 'UpdateGoal'] });
-    ctxAgent.agent.tools.initializeBuiltinTools();
+    void ctxAgent.agent.tools.initializeBuiltinTools();
     // No goal yet -> mutation tools are filtered out of the model's tool list.
     expect(ctxAgent.agent.tools.loopTools.map((t) => t.name)).not.toContain('UpdateGoal');
     expect(ctxAgent.agent.tools.loopTools.map((t) => t.name)).not.toContain('SetGoalBudget');

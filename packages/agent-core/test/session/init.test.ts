@@ -187,7 +187,7 @@ describe('Session.init', () => {
         modelAlias: 'mock-model',
         thinkingLevel: 'off',
       });
-      agent.tools.initializeBuiltinTools();
+      await agent.tools.initializeBuiltinTools();
       agent.tools.setActiveTools(['Read']);
 
       session.setToolKaos(replacementKaos);

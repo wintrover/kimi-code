@@ -938,13 +938,14 @@ describe('normalizeMcpInputSchema', () => {
       },
     };
     const result = normalizeMcpInputSchema(schema);
-    expect(((result as Record<string, unknown>)['properties'] as Record<string, unknown>)['max_results']).toEqual({
+    const props = result['properties'] as Record<string, unknown>;
+    expect(props['max_results']).toEqual({
       type: 'integer',
       default: 10,
       title: 'Max Results',
       nullable: true,
     });
-    expect(((result as Record<string, unknown>)['properties'] as Record<string, unknown>)['max_results']).not.toHaveProperty('anyOf');
+    expect(props['max_results']).not.toHaveProperty('anyOf');
   });
 
   it('converts anyOf with string and null to nullable string', () => {
@@ -957,7 +958,8 @@ describe('normalizeMcpInputSchema', () => {
       },
     };
     const result = normalizeMcpInputSchema(schema);
-    expect(((result as Record<string, unknown>)['properties'] as Record<string, unknown>)['file_pattern']).toEqual({
+    const props = result['properties'] as Record<string, unknown>;
+    expect(props['file_pattern']).toEqual({
       type: 'string',
       nullable: true,
     });
@@ -969,7 +971,8 @@ describe('normalizeMcpInputSchema', () => {
     };
     const result = normalizeMcpInputSchema(schema);
     expect(result).toHaveProperty('anyOf');
-    expect((result as Record<string, unknown>)['anyOf']).toHaveLength(3);
+    const resultAnyOf = result['anyOf'] as unknown[];
+    expect(resultAnyOf).toHaveLength(3);
   });
 
   it('handles schemas without anyOf unchanged', () => {
@@ -998,9 +1001,9 @@ describe('normalizeMcpInputSchema', () => {
       },
     };
     const result = normalizeMcpInputSchema(schema);
-    expect(
-      ((((result as Record<string, unknown>)['properties'] as Record<string, unknown>)['config'] as Record<string, unknown>)['properties'] as Record<string, unknown>)['timeout'],
-    ).toEqual({
+    const props = result['properties'] as Record<string, unknown>;
+    const config = props['config'] as Record<string, unknown>;
+    expect((config['properties'] as Record<string, unknown>)['timeout']).toEqual({
       type: 'integer',
       nullable: true,
     });

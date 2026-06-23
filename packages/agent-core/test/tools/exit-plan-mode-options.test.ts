@@ -261,33 +261,33 @@ describe('ExitPlanMode normalizeArgs', () => {
   const tool = new ExitPlanModeTool({} as Agent);
 
   it('wraps a string value into a single-element array', () => {
-    const result = tool.normalizeArgs!({ options: 'Approach A' });
+    const result = tool.normalizeArgs({ options: 'Approach A' });
     expect(result).toEqual({ options: [{ label: 'Approach A' }] });
   });
 
   it('wraps a single object into an array', () => {
-    const result = tool.normalizeArgs!({ options: { label: 'Approach A', description: 'desc' } });
+    const result = tool.normalizeArgs({ options: { label: 'Approach A', description: 'desc' } });
     expect(result).toEqual({ options: [{ label: 'Approach A', description: 'desc' }] });
   });
 
   it('removes null options', () => {
-    const result = tool.normalizeArgs!({ options: null });
+    const result = tool.normalizeArgs({ options: null });
     expect(result).toEqual({});
   });
 
   it('normalizes array of strings to array of objects', () => {
-    const result = tool.normalizeArgs!({ options: ['A', 'B'] });
+    const result = tool.normalizeArgs({ options: ['A', 'B'] });
     expect(result).toEqual({ options: [{ label: 'A' }, { label: 'B' }] });
   });
 
   it('passes through a correct array unchanged', () => {
     const input = { options: [{ label: 'A', description: 'x' }] };
-    const result = tool.normalizeArgs!(input);
+    const result = tool.normalizeArgs(input);
     expect(result).toEqual(input);
   });
 
   it('passes through when options is undefined', () => {
-    const result = tool.normalizeArgs!({});
+    const result = tool.normalizeArgs({});
     expect(result).toEqual({});
   });
 });

@@ -1442,7 +1442,7 @@ describe('Agent turn flow', () => {
       configurable: true,
       get: () => provider,
     });
-    ctx.agent.tools.initializeBuiltinTools();
+    await ctx.agent.tools.initializeBuiltinTools();
     ctx.agent.tools.setActiveTools(['ReadMediaFile']);
 
     const tool = ctx.agent.tools.loopTools.find((candidate) => candidate.name === 'ReadMediaFile');

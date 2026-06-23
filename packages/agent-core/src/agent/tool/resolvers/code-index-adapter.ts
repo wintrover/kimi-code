@@ -23,7 +23,7 @@ function normalizeCodeIndexResult(result: unknown): string {
   try {
     return JSON.stringify(result, null, 2);
   } catch {
-    return String(result);
+    return result as string;
   }
 }
 
@@ -135,13 +135,13 @@ export class CodeIndexShadowResolver implements ToolResolver {
         if ('isError' in innerExecution && innerExecution.isError === true) {
           return innerExecution;
         }
-        const runnable = innerExecution as Extract<typeof innerExecution, { execute: unknown }>;
+        const runnable = innerExecution;
 
         let fallbackExecution: { execute: (ctx: ExecutableToolContext) => Promise<ExecutableToolResult> } | undefined;
         if (fallback !== undefined) {
           const exec = await fallback.resolveExecution(args);
           if (!('isError' in exec && exec.isError === true)) {
-            fallbackExecution = exec as Extract<typeof exec, { execute: unknown }>;
+            fallbackExecution = exec;
           }
         }
 

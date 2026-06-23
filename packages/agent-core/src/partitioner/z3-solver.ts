@@ -86,8 +86,8 @@ export function greedyBinPackFallback(
   reason: string,
 ): PartitionResult {
   const n = W.length;
-  const assignment = new Array<number>(n);
-  const agentLoads = new Array<number>(N).fill(0);
+  const assignment = Array.from<number>({ length: n });
+  const agentLoads = Array.from<number>({ length: N }).fill(0);
 
   // Create index array sorted by weight descending
   const sortedIndices = Array.from({ length: n }, (_, i) => i);
@@ -153,7 +153,7 @@ export async function solveSwarmPartition(
   if (W.length === 0) {
     return {
       assignment: [],
-      agentLoads: new Array<number>(N).fill(0),
+      agentLoads: Array.from<number>({ length: N }).fill(0),
       T_max: 0,
       solver: 'z3',
     };
@@ -170,8 +170,8 @@ export async function solveSwarmPartition(
 
   try {
     return await solveWithZ3(z3.ctx, z3.Optimize, W, edges, N, timeoutMs);
-  } catch (err) {
-    return greedyBinPackFallback(W, N, `Z3 solve failed: ${String(err)}`);
+  } catch (error) {
+    return greedyBinPackFallback(W, N, `Z3 solve failed: ${String(error)}`);
   }
 }
 
@@ -294,8 +294,8 @@ async function solveWithZ3(
       return greedyBinPackFallback(W, N, 'Z3 returned no model');
     }
 
-    const assignment = new Array<number>(T).fill(0);
-    const agentLoads = new Array<number>(N).fill(0);
+    const assignment = Array.from<number>({ length: T }).fill(0);
+    const agentLoads = Array.from<number>({ length: N }).fill(0);
 
     for (let j = 0; j < T; j++) {
       for (let i = 0; i < N; i++) {
@@ -327,7 +327,7 @@ function extractBool(val: unknown): boolean | undefined {
   if (typeof val === 'object') {
     const obj = val as Record<string, unknown>;
     if ('value' in obj) return Boolean(obj['value']);
-    if ('toString' in obj) return obj.toString() === 'true';
+    if ('toString' in obj) return (obj as { toString(): string }).toString() === 'true';
   }
   return undefined;
 }

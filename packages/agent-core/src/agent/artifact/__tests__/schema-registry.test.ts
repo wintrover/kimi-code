@@ -70,7 +70,8 @@ describe('ArtifactSchemaRegistry', () => {
     );
     expect(registry.has('test')).toBe(true);
 
-    const valid = registry.migrate<{ value: number }>('test', { value: 42 }, '1.0.0');
+    type TestPayload = { value: number };
+    const valid = registry.migrate<TestPayload>('test', { value: 42 }, '1.0.0');
     expect(valid.success).toBe(true);
     if (valid.success) {
       expect(valid.payload).toEqual({ value: 42 });

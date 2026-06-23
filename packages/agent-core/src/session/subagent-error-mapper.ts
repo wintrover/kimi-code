@@ -27,11 +27,11 @@ export function classifySubagentError(error: unknown): SubagentFailureReason {
       const ctx = error.context;
       return {
         code: 'CIRCUIT_BREAKER_TRIPPED',
-        policy: String(ctx['policy'] ?? 'circuit_breaker'),
-        toolName: String(ctx['toolName'] ?? 'unknown'),
+        policy: (ctx['policy'] ?? 'circuit_breaker') as string,
+        toolName: (ctx['toolName'] ?? 'unknown') as string,
         repeatCount: Number(ctx['repeatCount'] ?? 0),
         maxRepeats: Number(ctx['maxRepeats'] ?? 0),
-        argsHash: ctx['argsHash'] != null ? String(ctx['argsHash']) : undefined,
+        argsHash: ctx['argsHash'] !== null ? (ctx['argsHash'] as string) : undefined,
       };
     }
     return { code: 'UNEXPECTED_CRASH', message: error.toContextMessage() };

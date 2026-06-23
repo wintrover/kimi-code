@@ -180,7 +180,7 @@ export class TurnBoundary {
     await Promise.race([
       this._compactionRequest.promise,
       new Promise<void>((resolve) => {
-        setTimeout(() => resolve(), this.compactionTimeoutMs);
+        setTimeout(() => { resolve(); }, this.compactionTimeoutMs);
       }),
     ]);
   }

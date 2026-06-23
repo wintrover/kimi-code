@@ -4,7 +4,7 @@ import { RankingFunction } from './ranking';
 import type { StateVector, TransitionProposal, TransitionValidationResult } from './ranking';
 import { ContractGate } from './contract';
 import type { VerificationResult } from './contract';
-import { ProofSigner, isVerified } from './proof';
+import { ProofSigner } from './proof';
 import type { ProofArtifact, VerifiedTransition } from './proof';
 
 // ---------------------------------------------------------------------------
