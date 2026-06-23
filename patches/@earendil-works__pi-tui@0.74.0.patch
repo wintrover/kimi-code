@@ -1,0 +1,78 @@
+diff --git a/dist/tui.d.ts b/dist/tui.d.ts
+index 8394d461feed1287deba13443c7afe79ff45c151..2ee71ca2cb737429fb7fe724d46880288626d295 100644
+--- a/dist/tui.d.ts
++++ b/dist/tui.d.ts
+@@ -186,6 +186,7 @@ export declare class TUI extends Container {
+     removeInputListener(listener: InputListener): void;
+     private queryCellSize;
+     stop(): void;
++    requestRender(options?: { force?: boolean; preserveScroll?: boolean }): void;
+     requestRender(force?: boolean): void;
+     private scheduleRender;
+     private handleInput;
+diff --git a/dist/tui.js b/dist/tui.js
+index b521ceb326eb8a25fc9ebc3feee4d39708296065..59331a18fc328cd26decad026008a7b2f16505ce 100644
+--- a/dist/tui.js
++++ b/dist/tui.js
+@@ -115,6 +115,7 @@ export class TUI extends Container {
+     previousViewportTop = 0; // Track previous viewport top for resize-aware cursor moves
+     fullRedrawCount = 0;
+     stopped = false;
++    _preserveScroll = false; // When true, doRender() skips auto-scroll for this cycle
+     // Overlay stack for modal components rendered on top of base content
+     focusOrderCounter = 0;
+     overlayStack = [];
+@@ -327,7 +328,12 @@ export class TUI extends Container {
+         this.terminal.showCursor();
+         this.terminal.stop();
+     }
+-    requestRender(force = false) {
++    requestRender(forceOrOptions) {
++        const opts = typeof forceOrOptions === 'boolean'
++            ? { force: forceOrOptions }
++            : forceOrOptions ?? {};
++        const force = Boolean(opts.force);
++        this._preserveScroll = Boolean(opts.preserveScroll);
+         if (force) {
+             this.previousLines = [];
+             this.previousWidth = -1; // -1 triggers widthChanged, forcing a full clear
+@@ -733,6 +739,10 @@ export class TUI extends Container {
+     doRender() {
+         if (this.stopped)
+             return;
++        // Capture preserveScroll flag and IMMEDIATELY reset instance field.
++        // This guarantees the flag is consumed exactly once per render cycle.
++        const preserveScroll = this._preserveScroll;
++        this._preserveScroll = false;
+         const width = this.terminal.columns;
+         const height = this.terminal.rows;
+         const widthChanged = this.previousWidth !== 0 && this.previousWidth !== width;
+@@ -917,7 +927,7 @@ export class TUI extends Container {
+         buffer += this.deleteChangedKittyImages(firstChanged, lastChanged);
+         const prevViewportBottom = prevViewportTop + height - 1;
+         const moveTargetRow = appendStart ? firstChanged - 1 : firstChanged;
+-        if (moveTargetRow > prevViewportBottom) {
++        if (moveTargetRow > prevViewportBottom && !preserveScroll) {
+             const currentScreenRow = Math.max(0, Math.min(height - 1, hardwareCursorRow - prevViewportTop));
+             const moveToBottom = height - 1 - currentScreenRow;
+             if (moveToBottom > 0) {
+@@ -940,7 +950,9 @@ export class TUI extends Container {
+         buffer += appendStart ? "\r\n" : "\r"; // Move to column 0
+         // Only render changed lines (firstChanged to lastChanged), not all lines to end
+         // This reduces flicker when only a single line changes (e.g., spinner animation)
+-        const renderEnd = Math.min(lastChanged, newLines.length - 1);
++        const renderEnd = preserveScroll
++            ? Math.min(lastChanged, newLines.length - 1, prevViewportTop + height - 1)
++            : Math.min(lastChanged, newLines.length - 1);
+         for (let i = firstChanged; i <= renderEnd; i++) {
+             if (i > firstChanged)
+                 buffer += "\r\n";
+@@ -978,7 +990,7 @@ export class TUI extends Container {
+         // Track where cursor ended up after rendering
+         let finalCursorRow = renderEnd;
+         // If we had more lines before, clear them and move cursor back
+-        if (this.previousLines.length > newLines.length) {
++        if (this.previousLines.length > newLines.length && !preserveScroll) {
+             // Move to end of new content first if we stopped before it
+             if (renderEnd < newLines.length - 1) {
+                 const moveDown = newLines.length - 1 - renderEnd;

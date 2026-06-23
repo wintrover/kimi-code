@@ -618,7 +618,7 @@ export class SubAgentEventHandler {
   }
 
   private requestRender(): void {
-    this.host.state.ui.requestRender();
+    this.host.state.ui.requestRender({ preserveScroll: true });
   }
 }
 

@@ -69,6 +69,6 @@ export class MoonLoader extends Text {
     const coloredFrame = this.colorFn ? this.colorFn(frame) : frame;
     this.displayText = this.label ? `${coloredFrame} ${this.label}` : coloredFrame;
     this.setText(this.displayText);
-    this.ui.requestRender();
+    this.ui.requestRender({ preserveScroll: true });
   }
 }
