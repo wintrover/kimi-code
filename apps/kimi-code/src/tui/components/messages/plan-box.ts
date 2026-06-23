@@ -11,12 +11,14 @@ import type { Component, MarkdownTheme } from '@earendil-works/pi-tui';
 import { Markdown, visibleWidth } from '@earendil-works/pi-tui';
 import chalk from 'chalk';
 
+import { drawBorderedBox, SIDE_PADDING } from '#/tui/utils/draw-bordered-box';
 import { toTerminalHyperlink } from '#/utils/terminal-hyperlink';
 
 const LEFT_MARGIN = 2; // two-space indent matching other tool call children
-const SIDE_PADDING = 1; // space between the │ and the content on each side
 const TITLE_PREFIX = ' plan: ';
 const TITLE_SUFFIX = ' ';
+
+const PLAN_CORNERS = { tl: '┌', tr: '┐', bl: '└', br: '┘' } as const;
 
 export interface PlanBoxOptions {
   status?: {
@@ -57,31 +59,20 @@ export class PlanBoxComponent implements Component {
       return this.cachedLines;
     }
 
-    // Box layout: "  ┌──...──┐"
-    //             "  │ <content> │"
-    //             "  └──...──┘"
-    // width = LEFT_MARGIN + 1 + horzLen + 1 ⇒ horzLen = width - 4
-    // content width = horzLen - 2 * SIDE_PADDING = width - 6
     const horzLen = Math.max(2, width - LEFT_MARGIN - 2);
     const contentWidth = Math.max(1, horzLen - 2 * SIDE_PADDING);
-
     const paint = (s: string): string => chalk.hex(this.borderHex)(s);
-    const indent = ' '.repeat(LEFT_MARGIN);
-
     const title = this.buildTitle(horzLen);
-    const trailingDashLen = Math.max(0, horzLen - visibleWidth(title));
-    const top =
-      indent + paint('┌') + paint(title) + paint('─'.repeat(trailingDashLen)) + paint('┐');
-    const bottom = indent + paint('└' + '─'.repeat(horzLen) + '┘');
 
-    const rawLines = this.markdown.render(contentWidth);
-
-    const lines: string[] = [top];
-    for (const raw of rawLines) {
-      const pad = Math.max(0, contentWidth - visibleWidth(raw));
-      lines.push(indent + paint('│') + ' ' + raw + ' '.repeat(pad) + ' ' + paint('│'));
-    }
-    lines.push(bottom);
+    const lines = drawBorderedBox({
+      lines: this.markdown.render(contentWidth),
+      contentWidth,
+      title,
+      titlePosition: 'bottom',
+      corners: PLAN_CORNERS,
+      leftMargin: LEFT_MARGIN,
+      paint,
+    });
 
     this.cachedWidth = width;
     this.cachedLines = lines;
