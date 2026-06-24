@@ -1619,6 +1619,13 @@ export class KimiTUI {
 
   /** RenderBatchable — commits a render batch (SYNC ONLY). */
   commitRenderBatch(): void {
+    // Auto-flush all dirty streaming buffers before the outermost commit.
+    // We're still inside the transaction (requestRender suppressed),
+    // so flush → component.updateContent → requestRender is safe.
+    // This ensures the single commit render includes the latest text.
+    if (this.renderTransaction.getDepth() === 1) {
+      this.streamingUI.flushNow();
+    }
     this.renderTransaction.commit();
   }
 

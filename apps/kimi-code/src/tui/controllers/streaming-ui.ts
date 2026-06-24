@@ -6,7 +6,6 @@ import { CompactionComponent } from '../components/dialogs/compaction';
 import { ReadGroupComponent } from '../components/messages/read-group';
 import { ThinkingComponent } from '../components/messages/thinking';
 import { ToolCallComponent } from '../components/messages/tool-call';
-import { STREAMING_UI_FLUSH_MS } from '../constant/streaming';
 import { hasDispose } from '../utils/component-capabilities';
 import { appendStreamingArgsPreview, parseStreamingArgs } from '../utils/event-payload';
 import { notifyTerminalOnce } from '../utils/terminal-notification';
@@ -425,19 +424,6 @@ export class StreamingUIController {
     this.pendingAssistantFlush = false;
     this.pendingThinkingFlush = false;
     this.pendingToolCallFlushIds.clear();
-  }
-
-  scheduleFlush(): void {
-    if (!this.hasPending()) return;
-    if (this.flushTimer !== undefined) return;
-    const delay =
-      this.lastFlushAt === undefined
-        ? 0
-        : Math.max(0, STREAMING_UI_FLUSH_MS - (Date.now() - this.lastFlushAt));
-    this.flushTimer = setTimeout(() => {
-      this.flushTimer = undefined;
-      this.flush();
-    }, delay);
   }
 
   flushNow(): void {

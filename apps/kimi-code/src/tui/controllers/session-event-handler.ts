@@ -424,7 +424,6 @@ export class SessionEventHandler {
       if (state.appState.streamingPhase !== 'thinking') {
         this.host.setAppState({ streamingPhase: 'thinking', streamingStartTime: Date.now() });
       }
-      streamingUI.scheduleFlush();
     } finally {
       this.host.commitRenderBatch();
     }
@@ -452,7 +451,6 @@ export class SessionEventHandler {
       if (state.appState.streamingPhase !== 'composing') {
         this.host.setAppState({ streamingPhase: 'composing', streamingStartTime: Date.now() });
       }
-      streamingUI.scheduleFlush();
     } finally {
       this.host.commitRenderBatch();
     }
@@ -540,7 +538,6 @@ export class SessionEventHandler {
       if (state.appState.streamingPhase !== 'composing') {
         this.host.setAppState({ streamingPhase: 'composing', streamingStartTime: Date.now() });
       }
-      streamingUI.scheduleFlush();
     } finally {
       this.host.commitRenderBatch();
     }
@@ -551,12 +548,15 @@ export class SessionEventHandler {
     if (text === undefined || text.length === 0) return;
     const tc = this.host.streamingUI.getToolComponent(event.toolCallId);
     if (tc === undefined) return;
-    if (event.update.kind === 'status') {
-      tc.appendProgress(text);
-      return;
-    }
-    if (event.update.kind === 'stdout' || event.update.kind === 'stderr') {
-      tc.appendLiveOutput(text);
+    this.host.beginRenderBatch();
+    try {
+      if (event.update.kind === 'status') {
+        tc.appendProgress(text);
+      } else if (event.update.kind === 'stdout' || event.update.kind === 'stderr') {
+        tc.appendLiveOutput(text);
+      }
+    } finally {
+      this.host.commitRenderBatch();
     }
   }
 

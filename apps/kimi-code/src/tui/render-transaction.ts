@@ -34,6 +34,11 @@ export class RenderTransaction {
     this.ui = ui;
   }
 
+  /** Current nesting depth. 0 means no active transaction. */
+  getDepth(): number {
+    return this.depth;
+  }
+
   /**
    * Suppress all requestRender calls until the matching outermost commit().
    * Safe to call nested — only the first call monkey-patches.

@@ -72,7 +72,6 @@ function makeHost(options: { createGoalRejects?: boolean } = {}) {
       hasThinkingDraft: vi.fn(() => false),
       flushThinkingToTranscript: vi.fn(),
       appendAssistantDelta: vi.fn(),
-      scheduleFlush: vi.fn(),
       getTurnContext: vi.fn(() => ({ turnId: 1 })),
     },
     requireSession: vi.fn(() => session),

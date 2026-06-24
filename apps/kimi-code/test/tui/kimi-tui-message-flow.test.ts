@@ -1323,10 +1323,12 @@ command = "vim"
         vi.fn(),
       );
 
-      expect(updateSpy).not.toHaveBeenCalled();
-      await vi.runOnlyPendingTimersAsync();
-
-      expect(updateSpy).toHaveBeenCalledTimes(1);
+      // With Commit Boundary Auto-Flush, each event flushes its accumulated
+      // buffer at commitRenderBatch() time. The component is updated once per
+      // event with the full accumulated text. Renders are still coalesced by
+      // pi-tui's renderRequested flag.
+      expect(updateSpy).toHaveBeenCalledTimes(2);
+      expect(updateSpy).toHaveBeenNthCalledWith(1, 'ab');
       expect(updateSpy).toHaveBeenLastCalledWith('abc');
     } finally {
       vi.useRealTimers();
@@ -1387,11 +1389,8 @@ command = "vim"
         vi.fn(),
       );
 
-      expect(driver.streamingUI.getToolComponent('call_bash')).toBeUndefined();
-      expect(driver.streamingUI.hasActiveToolCall('call_bash')).toBe(false);
-
-      await vi.runOnlyPendingTimersAsync();
-
+      // With Commit Boundary Auto-Flush, the tool call preview is flushed
+      // at commitRenderBatch() time — the component exists immediately.
       expect(driver.streamingUI.getToolComponent('call_bash')).toBeDefined();
       expect(driver.streamingUI.getActiveToolCall('call_bash')?.args).toMatchObject({
         command: 'echo hi',
