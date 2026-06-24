@@ -1,5 +1,5 @@
 {
-  "sourceExts": [".ts", ".md", ".json"],
+  "sourceExts": [".ts", ".md", ".json", ".patch", ".yaml"],
   "excludedDirs": ["node_modules", ".git", "dist", "dist-native", ".turbo", ".changeset", "node"],
   "hashAlgorithm": "sha1",
   "hashFile": ".build-hash",

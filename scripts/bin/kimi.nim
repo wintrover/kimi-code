@@ -17,7 +17,7 @@ var
   hashFileName = defaultHashFileName
   lockFileName = defaultLockFileName
   excludedSet = defaultExcludedDirs.toHashSet()
-  sourceExts: seq[string] = @[".ts", ".md", ".json"]
+  sourceExts: seq[string] = @[".ts", ".md", ".json", ".patch", ".yaml"]
 
 # ── Path Resolution ──
 

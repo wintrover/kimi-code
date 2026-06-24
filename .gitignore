@@ -15,4 +15,5 @@ superpowers
 .worktrees/
 .build-hash
 .build-hash.lock
+.patches-applied
 scripts/bin/kimi
