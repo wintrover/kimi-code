@@ -52,7 +52,7 @@ export interface MigrationScreenOptions {
   /** Called once the screen is finished; the host then restores the editor. */
   readonly onComplete: (result: MigrationScreenResult) => void;
   /** Triggers a re-render; the host wires this to `ui.requestRender()`. */
-  readonly requestRender?: (options?: { preserveScroll?: boolean }) => void;
+  readonly requestRender?: (options?: { force?: boolean }) => void;
   /** Injectable for tests; defaults to the package's runMigration. */
   readonly runMigration?: (input: RunMigrationInput) => Promise<MigrationReport>;
   /**
@@ -149,7 +149,7 @@ export class MigrationScreenComponent extends Container implements Focusable {
     this.stopSpinner();
     this.spinnerTimer = setInterval(() => {
       this.spinnerFrame = (this.spinnerFrame + 1) % SPINNER_FRAMES.length;
-      this.opts.requestRender?.({ preserveScroll: true });
+      this.opts.requestRender?.();
     }, SPINNER_INTERVAL_MS);
     // A decorative timer must never keep the process alive on its own.
     this.spinnerTimer.unref();

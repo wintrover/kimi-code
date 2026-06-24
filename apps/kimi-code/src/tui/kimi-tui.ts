@@ -270,7 +270,7 @@ export class KimiTUI {
     this.startupNotice = startupInput.startupNotice;
     this.state = createTUIState(tuiOptions);
     this.uninstallRainbowDance = installRainbowDance(() => {
-      this.state.ui.requestRender({ preserveScroll: true });
+      this.state.ui.requestRender();
     });
 
     this.reverseRpcDisposers.push(

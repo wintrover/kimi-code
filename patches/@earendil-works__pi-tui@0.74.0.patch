@@ -1,28 +1,20 @@
 diff --git a/dist/tui.d.ts b/dist/tui.d.ts
-index 8394d461feed1287deba13443c7afe79ff45c151..2ee71ca2cb737429fb7fe724d46880288626d295 100644
+index 8394d46..6b46f4a 100644
 --- a/dist/tui.d.ts
 +++ b/dist/tui.d.ts
 @@ -186,6 +186,7 @@ export declare class TUI extends Container {
      removeInputListener(listener: InputListener): void;
      private queryCellSize;
      stop(): void;
-+    requestRender(options?: { force?: boolean; preserveScroll?: boolean }): void;
++    requestRender(options?: { force?: boolean }): void;
      requestRender(force?: boolean): void;
      private scheduleRender;
      private handleInput;
 diff --git a/dist/tui.js b/dist/tui.js
-index b521ceb326eb8a25fc9ebc3feee4d39708296065..59331a18fc328cd26decad026008a7b2f16505ce 100644
+index b521ceb..5a3c0ac 100644
 --- a/dist/tui.js
 +++ b/dist/tui.js
-@@ -115,6 +115,7 @@ export class TUI extends Container {
-     previousViewportTop = 0; // Track previous viewport top for resize-aware cursor moves
-     fullRedrawCount = 0;
-     stopped = false;
-+    _preserveScroll = false; // When true, doRender() skips auto-scroll for this cycle
-     // Overlay stack for modal components rendered on top of base content
-     focusOrderCounter = 0;
-     overlayStack = [];
-@@ -327,7 +328,12 @@ export class TUI extends Container {
+@@ -327,7 +327,11 @@ export class TUI extends Container {
          this.terminal.showCursor();
          this.terminal.stop();
      }
@@ -32,47 +24,98 @@ index b521ceb326eb8a25fc9ebc3feee4d39708296065..59331a18fc328cd26decad026008a7b2
 +            ? { force: forceOrOptions }
 +            : forceOrOptions ?? {};
 +        const force = Boolean(opts.force);
-+        this._preserveScroll = Boolean(opts.preserveScroll);
          if (force) {
              this.previousLines = [];
              this.previousWidth = -1; // -1 triggers widthChanged, forcing a full clear
-@@ -733,6 +739,10 @@ export class TUI extends Container {
-     doRender() {
-         if (this.stopped)
-             return;
-+        // Capture preserveScroll flag and IMMEDIATELY reset instance field.
-+        // This guarantees the flag is consumed exactly once per render cycle.
-+        const preserveScroll = this._preserveScroll;
-+        this._preserveScroll = false;
-         const width = this.terminal.columns;
-         const height = this.terminal.rows;
-         const widthChanged = this.previousWidth !== 0 && this.previousWidth !== width;
-@@ -917,7 +927,7 @@ export class TUI extends Container {
+@@ -755,6 +759,21 @@ export class TUI extends Container {
+         // Extract cursor position before applying line resets (marker must be found first)
+         const cursorPos = this.extractCursorPosition(newLines, height);
+         newLines = this.applyLineResets(newLines);
++        // Derive viewport state: is the user scrolled above the bottom?
++        // This is deterministic — no mutable flag, no race condition.
++        const maxViewportTop = Math.max(0, newLines.length - height);
++        // Defensive guard: clamp prevViewportTop to prevent edge-case drift
++        if (prevViewportTop > maxViewportTop) prevViewportTop = maxViewportTop;
++        // Was the user at (or past) the bottom in the previous render?
++        // This distinguishes "intentionally scrolled up" from "content grew, pushing viewport above new bottom".
++        const wasAtBottom = this.previousLines.length === 0 ||
++            this.previousViewportTop >= Math.max(0, this.previousLines.length - height);
++        const isUserScrolledUp = this.previousLines.length > 0 && prevViewportTop < maxViewportTop && !wasAtBottom;
++        // Clamp cursor position to viewport when user is scrolled up
++        // to prevent positionHardwareCursor from moving cursor past viewport boundary
++        if (isUserScrolledUp && cursorPos) {
++            cursorPos.row = Math.min(cursorPos.row, prevViewportTop + height - 1);
++        }
+         // Helper to clear scrollback and viewport and render all new lines
+         const fullRender = (clear) => {
+             this.fullRedrawCount += 1;
+@@ -780,7 +799,9 @@ export class TUI extends Container {
+                 this.maxLinesRendered = Math.max(this.maxLinesRendered, newLines.length);
+             }
+             const bufferLength = Math.max(height, newLines.length);
+-            this.previousViewportTop = Math.max(0, bufferLength - height);
++            this.previousViewportTop = isUserScrolledUp
++                ? prevViewportTop
++                : Math.max(0, bufferLength - height);
+             this.positionHardwareCursor(cursorPos, newLines.length);
+             this.previousLines = newLines;
+             this.previousKittyImageIds = this.collectKittyImageIds(newLines);
+@@ -907,9 +928,26 @@ export class TUI extends Container {
+         // Differential rendering can only touch what was actually visible.
+         // If the first changed line is above the previous viewport, we need a full redraw.
+         if (firstChanged < prevViewportTop) {
+-            logRedraw(`firstChanged < viewportTop (${firstChanged} < ${prevViewportTop})`);
+-            fullRender(true);
+-            return;
++            if (isUserScrolledUp) {
++                // User has scrolled up — changes are above the viewport.
++                // Clamp firstChanged to viewport and do differential rendering.
++                firstChanged = prevViewportTop;
++                if (firstChanged > lastChanged) {
++                    // All changes are above the viewport — skip rendering entirely.
++                    this.previousLines = newLines;
++                    this.previousKittyImageIds = this.collectKittyImageIds(newLines);
++                    this.positionHardwareCursor(cursorPos, newLines.length);
++                    this.previousViewportTop = prevViewportTop;
++                    this.previousWidth = width;
++                    this.previousHeight = height;
++                    return;
++                }
++                // Fall through to differential rendering with clamped firstChanged
++            } else {
++                logRedraw(`firstChanged < viewportTop (${firstChanged} < ${prevViewportTop})`);
++                fullRender(true);
++                return;
++            }
+         }
+         // Render from first changed line to end
+         // Build buffer with all updates wrapped in synchronized output
+@@ -917,7 +955,7 @@ export class TUI extends Container {
          buffer += this.deleteChangedKittyImages(firstChanged, lastChanged);
          const prevViewportBottom = prevViewportTop + height - 1;
          const moveTargetRow = appendStart ? firstChanged - 1 : firstChanged;
 -        if (moveTargetRow > prevViewportBottom) {
-+        if (moveTargetRow > prevViewportBottom && !preserveScroll) {
++        if (moveTargetRow > prevViewportBottom && !isUserScrolledUp) {
              const currentScreenRow = Math.max(0, Math.min(height - 1, hardwareCursorRow - prevViewportTop));
              const moveToBottom = height - 1 - currentScreenRow;
              if (moveToBottom > 0) {
-@@ -940,7 +950,9 @@ export class TUI extends Container {
+@@ -940,7 +978,9 @@ export class TUI extends Container {
          buffer += appendStart ? "\r\n" : "\r"; // Move to column 0
          // Only render changed lines (firstChanged to lastChanged), not all lines to end
          // This reduces flicker when only a single line changes (e.g., spinner animation)
 -        const renderEnd = Math.min(lastChanged, newLines.length - 1);
-+        const renderEnd = preserveScroll
++        const renderEnd = isUserScrolledUp
 +            ? Math.min(lastChanged, newLines.length - 1, prevViewportTop + height - 1)
 +            : Math.min(lastChanged, newLines.length - 1);
          for (let i = firstChanged; i <= renderEnd; i++) {
              if (i > firstChanged)
                  buffer += "\r\n";
-@@ -978,7 +990,7 @@ export class TUI extends Container {
+@@ -978,7 +1018,7 @@ export class TUI extends Container {
          // Track where cursor ended up after rendering
          let finalCursorRow = renderEnd;
          // If we had more lines before, clear them and move cursor back
 -        if (this.previousLines.length > newLines.length) {
-+        if (this.previousLines.length > newLines.length && !preserveScroll) {
++        if (this.previousLines.length > newLines.length && !isUserScrolledUp) {
              // Move to end of new content first if we stopped before it
              if (renderEnd < newLines.length - 1) {
                  const moveDown = newLines.length - 1 - renderEnd;
