@@ -8,7 +8,7 @@
  */
 import { execSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
 import { computeSourceHash, loadConfig } from './source-hash.mjs';
 
@@ -49,7 +49,7 @@ function withLock(lockDirPath, action) {
 // ── Main ────────────────────────────────────────────────────────────────────
 
 try {
-  const rootDir = process.cwd();
+  const rootDir = resolve(import.meta.dirname, '..');
   const config = loadConfig(rootDir);
   const lockDir = join(rootDir, `${config.lockFile}.d`);
   const hashPath = join(rootDir, config.hashFile);
