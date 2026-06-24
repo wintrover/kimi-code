@@ -66,6 +66,7 @@ import { AssistantMessageComponent } from './components/messages/assistant-messa
 import { BackgroundAgentStatusComponent } from './components/messages/background-agent-status';
 import { CronMessageComponent } from './components/messages/cron-message';
 import { buildGoalMarker } from './components/messages/goal-markers';
+import { SwarmModeMarkerComponent, type SwarmModeMarkerState } from './components/messages/swarm-markers';
 import {
   GoalCompletionMessageComponent,
   GoalSetMessageComponent,
@@ -1517,6 +1518,98 @@ export class KimiTUI {
   showNotice(title: string, detail?: string): void {
     this.state.transcriptContainer.addChild(new NoticeMessageComponent(title, detail));
     this.state.ui.requestRender();
+  }
+
+  renderSwarmModeMarker(markerState: SwarmModeMarkerState): void {
+    this.state.transcriptContainer.addChild(new SwarmModeMarkerComponent(markerState));
+    this.state.ui.requestRender();
+  }
+
+  renderGoalMarker(marker: Component | null): void {
+    if (marker !== null) {
+      this.state.transcriptContainer.addChild(marker);
+      this.state.ui.requestRender();
+    }
+  }
+
+  createMcpStatusSpinner(label: string): MoonLoader {
+    const tint = (s: string): string => currentTheme.fg('textMuted', s);
+    const spinner = new MoonLoader(this.state.ui, 'braille', tint, label);
+    this.state.transcriptContainer.addChild(spinner);
+    this.state.ui.requestRender();
+    return spinner;
+  }
+
+  replaceTranscriptComponent(old: Component, replacement: Component): void {
+    const children = this.state.transcriptContainer.children;
+    const idx = children.indexOf(old);
+    if (idx >= 0) {
+      children[idx] = replacement;
+      this.state.transcriptContainer.invalidate();
+    } else {
+      this.state.transcriptContainer.addChild(replacement);
+    }
+    this.state.ui.requestRender();
+  }
+
+  syncBackgroundTaskBadge(bashTasks: number, agentTasks: number): void {
+    this.state.footer.setBackgroundCounts({ bashTasks, agentTasks });
+    this.state.ui.requestRender();
+  }
+
+  // ── ISP trait implementations ──────────────────────────────────────────
+
+  /** Renderable — triggers a re-render. */
+  requestRender(): void {
+    this.state.ui.requestRender();
+  }
+
+  /** FocusableHost — returns focus to the editor. */
+  focusEditor(): void {
+    this.state.ui.setFocus(this.state.editor);
+  }
+
+  /** Hintable — sets a transient hint on the footer (atomic: includes re-render). */
+  setTransientHint(text: string | null): void {
+    this.state.footer.setTransientHint(text);
+    this.state.ui.requestRender();
+  }
+
+  /** TranscriptContainerHost — adds a child to the transcript (atomic: includes re-render). */
+  addTranscriptChild(component: Component): void {
+    this.state.transcriptContainer.addChild(component);
+    this.state.ui.requestRender();
+  }
+
+  /** TranscriptContainerHost — finds a child matching a predicate. */
+  findTranscriptChild(predicate: (child: Component) => boolean): Component | undefined {
+    return this.state.transcriptContainer.children.find(predicate);
+  }
+
+  /** TranscriptContainerHost — replaces a child (atomic: includes invalidate + re-render). */
+  replaceTranscriptChild(old: Component, replacement: Component): void {
+    const children = this.state.transcriptContainer.children;
+    const idx = children.indexOf(old);
+    if (idx >= 0) {
+      children[idx] = replacement;
+      this.state.transcriptContainer.invalidate();
+    } else {
+      this.state.transcriptContainer.addChild(replacement);
+    }
+    this.state.ui.requestRender();
+  }
+
+  /** TranscriptContainerHost — splices children (atomic: includes invalidate + re-render). */
+  spliceTranscriptChildren(index: number, deleteCount: number): Component[] {
+    const removed = this.state.transcriptContainer.children.splice(index, deleteCount);
+    this.state.transcriptContainer.invalidate();
+    this.state.ui.requestRender();
+    return removed;
+  }
+
+  /** TerminalSizable — returns terminal dimensions. */
+  getTerminalSize(): { rows: number; columns: number } {
+    return { rows: this.state.ui.terminal.rows, columns: this.state.ui.terminal.columns };
   }
 
   showError(message: string): void {

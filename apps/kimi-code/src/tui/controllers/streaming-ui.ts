@@ -20,9 +20,10 @@ import type {
   ToolResultBlockData,
   TranscriptEntry,
 } from '../types';
+import type { TranscriptContainerHost } from '#/tui/types/traits';
 import type { TUIState } from '../tui-state';
 
-export interface StreamingUIHost {
+export interface StreamingUIHost extends TranscriptContainerHost {
   state: TUIState;
   session: Session | undefined;
   setAppState(patch: Partial<AppState>): void;
@@ -243,16 +244,28 @@ export class StreamingUIController {
       if (agentIdMatch !== undefined) break;
     }
     if (agentIdMatch === undefined) {
-      for (const child of this.host.state.transcriptContainer.children) {
+      const found = this.host.findTranscriptChild((child): boolean => {
         if (child instanceof ToolCallComponent) {
-          visit(child);
-        } else if (child instanceof AgentGroupComponent) {
-          for (const tc of child.getToolComponents()) {
-            visit(tc);
-            if (agentIdMatch !== undefined) break;
-          }
+          return useAgentIdOnly
+            ? child.getSubagentAgentId() === args.agentId
+            : child.getAgentToolDescription() === args.description;
         }
-        if (agentIdMatch !== undefined) break;
+        if (child instanceof AgentGroupComponent) {
+          return child.getToolComponents().some((tc) =>
+            useAgentIdOnly
+              ? tc.getSubagentAgentId() === args.agentId
+              : tc.getAgentToolDescription() === args.description,
+          );
+        }
+        return false;
+      });
+      if (found instanceof ToolCallComponent) {
+        visit(found);
+      } else if (found instanceof AgentGroupComponent) {
+        for (const tc of found.getToolComponents()) {
+          visit(tc);
+          if (agentIdMatch !== undefined) break;
+        }
       }
     }
     const target = useAgentIdOnly

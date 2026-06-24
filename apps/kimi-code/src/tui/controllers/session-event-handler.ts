@@ -1,4 +1,5 @@
 import type { Component, Focusable } from '@earendil-works/pi-tui';
+import type { TranscriptContainerHost, TerminalSizable } from '#/tui/types/traits';
 import type {
   AgentStatusUpdatedEvent,
   AssistantDeltaEvent,
@@ -30,11 +31,10 @@ import type {
   WarningEvent,
 } from '@moonshot-ai/kimi-code-sdk';
 
-import { MoonLoader } from '../components/chrome/moon-loader';
+import type { MoonLoader } from '../components/chrome/moon-loader';
 import { buildGoalMarker } from '../components/messages/goal-markers';
 import { StatusMessageComponent } from '../components/messages/status-message';
 import {
-  SwarmModeMarkerComponent,
   type SwarmModeMarkerState,
 } from '../components/messages/swarm-markers';
 import {
@@ -66,7 +66,6 @@ import {
   selectMcpStartupStatusRows,
 } from '../utils/mcp-server-status';
 import { openUrl } from '#/utils/open-url';
-import { currentTheme } from '#/tui/theme';
 import type { ColorToken } from '#/tui/theme';
 import { errorReportHintLine } from '../constant/feedback';
 import { formatStepDebugTiming } from '#/utils/usage/debug-timing';
@@ -86,7 +85,7 @@ import type {
 import type { TUIState } from '../tui-state';
 import { createGoal as startGoalCommand } from '../commands/goal';
 
-export interface SessionEventHost {
+export interface SessionEventHost extends TranscriptContainerHost, TerminalSizable {
   state: TUIState;
   session: Session | undefined;
   aborted: boolean;
@@ -112,6 +111,14 @@ export interface SessionEventHost {
   shiftQueuedMessage(): QueuedMessage | undefined;
   readonly btwPanelController: BtwPanelController;
   readonly tasksBrowserController: TasksBrowserController;
+
+  // Transcript / rendering host methods — encapsulate pi-tui transcriptContainer,
+  // footer, and ui.requestRender access so the handler never touches them directly.
+  renderSwarmModeMarker(markerState: SwarmModeMarkerState): void;
+  renderGoalMarker(marker: Component | null): void;
+  createMcpStatusSpinner(label: string): MoonLoader;
+  replaceTranscriptComponent(old: Component, replacement: Component): void;
+  syncBackgroundTaskBadge(bashTasks: number, agentTasks: number): void;
 }
 
 export class SessionEventHandler {
@@ -581,11 +588,8 @@ export class SessionEventHandler {
     }
   }
 
-  private renderSwarmModeMarker(state: SwarmModeMarkerState): void {
-    this.host.state.transcriptContainer.addChild(
-      new SwarmModeMarkerComponent(state),
-    );
-    this.host.state.ui.requestRender();
+  private renderSwarmModeMarker(markerState: SwarmModeMarkerState): void {
+    this.host.renderSwarmModeMarker(markerState);
   }
 
   private handleGoalUpdated(event: GoalUpdatedEvent): void {
@@ -616,7 +620,6 @@ export class SessionEventHandler {
         renderMode: 'markdown',
         content: buildGoalCompletionMessage(event.snapshot),
       });
-      state.ui.requestRender();
       return;
     }
 
@@ -636,8 +639,7 @@ export class SessionEventHandler {
     }
     const marker = buildGoalMarker(change, state.toolOutputExpanded, change.actor);
     if (marker !== null) {
-      state.transcriptContainer.addChild(marker);
-      state.ui.requestRender();
+      this.host.renderGoalMarker(marker);
     }
   }
 
@@ -645,12 +647,8 @@ export class SessionEventHandler {
     const change = this.pendingModelBlockedFallback;
     if (change === undefined) return;
     this.pendingModelBlockedFallback = undefined;
-    const { state } = this.host;
-    const marker = buildGoalMarker(change, state.toolOutputExpanded, 'model');
-    if (marker !== null) {
-      state.transcriptContainer.addChild(marker);
-      state.ui.requestRender();
-    }
+    const marker = buildGoalMarker(change, this.host.state.toolOutputExpanded, 'model');
+    this.host.renderGoalMarker(marker);
   }
 
   private scheduleQueuedGoalPromotion(): void {
@@ -864,22 +862,17 @@ export class SessionEventHandler {
   }
 
   private showMcpServerStatusSpinner(name: string): void {
-    const { state } = this.host;
     const label = `MCP server "${name}" connecting…`;
     const existing = this.mcpServerStatusSpinners.get(name);
     if (existing !== undefined) {
       existing.setLabel(label);
       return;
     }
-    const tint = (s: string): string => currentTheme.fg('textMuted', s);
-    const spinner = new MoonLoader(state.ui, 'braille', tint, label);
-    state.transcriptContainer.addChild(spinner);
+    const spinner = this.host.createMcpStatusSpinner(label);
     this.mcpServerStatusSpinners.set(name, spinner);
-    state.ui.requestRender();
   }
 
   private finalizeMcpServerStatusRow(name: string, message: string, color: ColorToken): void {
-    const { state } = this.host;
     const spinner = this.mcpServerStatusSpinners.get(name);
     if (spinner === undefined) {
       this.host.showStatus(message, color);
@@ -887,16 +880,8 @@ export class SessionEventHandler {
     }
     spinner.stop();
     const status = new StatusMessageComponent(message, color);
-    const children = state.transcriptContainer.children;
-    const idx = children.indexOf(spinner);
-    if (idx >= 0) {
-      children[idx] = status;
-      state.transcriptContainer.invalidate();
-    } else {
-      state.transcriptContainer.addChild(status);
-    }
+    this.host.replaceTranscriptComponent(spinner, status);
     this.mcpServerStatusSpinners.delete(name);
-    state.ui.requestRender();
   }
 
   private handleSkillActivated(event: SkillActivatedEvent): void {
@@ -1040,7 +1025,6 @@ export class SessionEventHandler {
   }
 
   private syncBackgroundTaskBadge(): void {
-    const { state } = this.host;
     let bashTasks = 0;
     let agentTasks = 0;
     for (const info of this.backgroundTasks.values()) {
@@ -1059,7 +1043,6 @@ export class SessionEventHandler {
         bashTasks += 1;
       }
     }
-    state.footer.setBackgroundCounts({ bashTasks, agentTasks });
-    state.ui.requestRender();
+    this.host.syncBackgroundTaskBadge(bashTasks, agentTasks);
   }
 }

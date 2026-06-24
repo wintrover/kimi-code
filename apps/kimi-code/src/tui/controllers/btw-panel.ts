@@ -12,10 +12,11 @@ import { formatErrorMessage } from '../utils/event-payload';
 import { formatHookResultPlain } from '../utils/hook-result-format';
 import { createMarkdownTheme } from '../theme/pi-tui-theme';
 import type { TUIState } from '../tui-state';
+import type { Renderable, FocusableHost } from '#/tui/types/traits';
 
 const BTW_BUSY_NOTICE = 'Wait for /btw to finish before sending another question.';
 
-export interface BtwPanelHost {
+export interface BtwPanelHost extends Renderable, FocusableHost {
   state: TUIState;
   session: Session | undefined;
   readonly harness: KimiHarness;
@@ -87,15 +88,15 @@ export class BtwPanelController {
       return true;
     }
     active.panel.submit(text);
-    this.host.state.ui.setFocus(this.host.state.editor);
-    this.host.state.ui.requestRender();
+    this.host.focusEditor();
+    this.host.requestRender();
     return true;
   }
 
   scroll(direction: 'up' | 'down'): boolean {
     const panel = this.active?.panel;
     if (panel === undefined || !panel.scroll(direction)) return false;
-    this.host.state.ui.requestRender();
+    this.host.requestRender();
     return true;
   }
 
@@ -106,15 +107,15 @@ export class BtwPanelController {
     switch (event.type) {
       case 'assistant.delta':
         panel.appendAnswer(event.delta);
-        this.host.state.ui.requestRender();
+        this.host.requestRender();
         return true;
       case 'thinking.delta':
         panel.appendThinking(event.delta);
-        this.host.state.ui.requestRender();
+        this.host.requestRender();
         return true;
       case 'hook.result':
         panel.appendAnswer(formatHookResultPlain(event));
-        this.host.state.ui.requestRender();
+        this.host.requestRender();
         return true;
       case 'turn.ended':
         if (event.reason === 'completed') {
@@ -122,7 +123,7 @@ export class BtwPanelController {
         } else {
           panel.markFailed(formatBtwTurnEnd(event));
         }
-        this.host.state.ui.requestRender();
+        this.host.requestRender();
         return true;
       default:
         return true;
@@ -134,8 +135,8 @@ export class BtwPanelController {
     this.host.state.btwPanelContainer.addChild(new Spacer(1));
     this.host.state.btwPanelContainer.addChild(panel);
     this.host.state.editor.connectedAbove = true;
-    this.host.state.ui.setFocus(this.host.state.editor);
-    this.host.state.ui.requestRender();
+    this.host.focusEditor();
+    this.host.requestRender();
   }
 
   private close(panel: BtwPanelComponent): void {
@@ -143,7 +144,7 @@ export class BtwPanelController {
     this.unregister(panel);
     this.host.state.btwPanelContainer.clear();
     this.host.state.editor.connectedAbove = false;
-    this.host.state.ui.setFocus(this.host.state.editor);
+    this.host.focusEditor();
     this.host.state.ui.requestRender(true);
   }
 
@@ -162,19 +163,19 @@ export class BtwPanelController {
   ): void {
     this.host.state.editor.setText(input);
     active.panel.addTransientNotice(BTW_BUSY_NOTICE);
-    this.host.state.ui.requestRender();
+    this.host.requestRender();
   }
 
   private promptAgent(agentId: string, prompt: string, panel: BtwPanelComponent): void {
     const session = this.host.session;
     if (session === undefined) {
       panel.markFailed(NO_ACTIVE_SESSION_MESSAGE);
-      this.host.state.ui.requestRender();
+      this.host.requestRender();
       return;
     }
     void this.withInteractiveAgent(agentId, () => session.prompt(prompt)).catch((error: unknown) => {
       panel.markFailed(`Failed to send /btw prompt: ${formatErrorMessage(error)}`);
-      this.host.state.ui.requestRender();
+      this.host.requestRender();
     });
   }
 

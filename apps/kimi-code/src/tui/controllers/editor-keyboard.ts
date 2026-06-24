@@ -16,8 +16,9 @@ import type { ImageAttachmentStore } from '../utils/image-attachment-store';
 import type { PendingExit } from '../types';
 import type { TUIState } from '../tui-state';
 import type { BtwPanelController } from './btw-panel';
+import type { Hintable, Renderable } from '../types/traits';
 
-export interface EditorKeyboardHost {
+export interface EditorKeyboardHost extends Renderable, Hintable {
   state: TUIState;
   session: Session | undefined;
   cancelInFlight: (() => void) | undefined;
@@ -214,18 +215,18 @@ export class EditorKeyboardController {
   clearPendingExit(): void {
     if (!this.pendingExit) return;
     clearTimeout(this.pendingExit.timer);
-    this.host.state.footer.setTransientHint(null);
+    this.host.setTransientHint(null);
     this.pendingExit = null;
   }
 
   private armPendingExit(kind: 'ctrl-c' | 'ctrl-d', hint: string): void {
     this.clearPendingExit();
-    this.host.state.footer.setTransientHint(hint);
+    this.host.setTransientHint(hint);
 
     const timer = setTimeout(() => {
       if (this.pendingExit?.timer === timer) {
         this.clearPendingExit();
-        this.host.state.ui.requestRender();
+        this.host.requestRender();
       }
     }, EXIT_CONFIRM_WINDOW_MS);
 

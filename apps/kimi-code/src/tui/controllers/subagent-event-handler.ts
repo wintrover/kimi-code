@@ -538,7 +538,7 @@ export class SubAgentEventHandler {
     progress.updateArgs(args, options);
     this.agentSwarmProgress.set(toolCallId, progress);
     this.host.streamingUI.finalizeLiveTextBuffers('tool');
-    this.host.state.transcriptContainer.addChild(progress);
+    this.host.addTranscriptChild(progress);
     this.host.updateActivityPane();
     this.requestRender();
     return progress;
@@ -550,27 +550,24 @@ export class SubAgentEventHandler {
   ): void {
     this.agentSwarmProgress.delete(toolCallId);
     progress.dispose();
-    const children = this.host.state.transcriptContainer.children;
-    const index = children.indexOf(progress);
-    if (index >= 0) {
-      children.splice(index, 1);
-      this.host.state.transcriptContainer.invalidate();
+    const found = this.host.findTranscriptChild(c => c === progress);
+    if (found !== undefined) {
+      const index = this.host.state.transcriptContainer.children.indexOf(found);
+      this.host.spliceTranscriptChildren(index, 1);
     }
     this.host.updateActivityPane();
   }
 
   private agentSwarmGridHeight(): number | undefined {
-    const { state } = this.host;
-    const terminalRows = state.ui.terminal.rows;
-    const terminalColumns = state.ui.terminal.columns;
+    const { rows: terminalRows, columns: terminalColumns } = this.host.getTerminalSize();
     if (!Number.isFinite(terminalColumns) || terminalColumns <= 0) {
       return agentSwarmGridHeightForTerminalRows(terminalRows);
     }
 
     const width = Math.floor(terminalColumns);
     const rowsAfterSwarm = renderedRowsAfterChild(
-      state.ui.children,
-      state.transcriptContainer,
+      this.host.state.ui.children,
+      this.host.state.transcriptContainer,
       width,
     );
     return agentSwarmGridHeightForTerminalRows(terminalRows, rowsAfterSwarm);

@@ -4,15 +4,13 @@ import {
   visibleWidth,
   wrapTextWithAnsi,
   type SelectItem,
-  type SelectListLayoutOptions,
-  type SelectListTheme,
 } from '@earendil-works/pi-tui';
-
-// Mirror pi-tui's private select-list layout constants
-// (dist/components/select-list.js); keep in sync when bumping pi-tui.
-const DEFAULT_PRIMARY_COLUMN_WIDTH = 32;
-const PRIMARY_COLUMN_GAP = 2;
-const MIN_DESCRIPTION_WIDTH = 10;
+import {
+  getSelectListInternals,
+  DEFAULT_PRIMARY_COLUMN_WIDTH,
+  PRIMARY_COLUMN_GAP,
+  MIN_DESCRIPTION_WIDTH,
+} from './editor-adapter';
 
 const DESCRIPTION_MAX_LINES = 2;
 const ELLIPSIS = '…';
@@ -28,14 +26,6 @@ const TRAILING_ANSI_RESET = /(?:\u001B\[0m)+$/;
 
 function truncatePlainToWidth(text: string, maxWidth: number): string {
   return truncateToWidth(text, maxWidth, '').replace(TRAILING_ANSI_RESET, '');
-}
-
-interface SelectListInternals {
-  readonly filteredItems: SelectItem[];
-  readonly selectedIndex: number;
-  readonly maxVisible: number;
-  readonly theme: SelectListTheme;
-  readonly layout: SelectListLayoutOptions;
 }
 
 /**
@@ -156,7 +146,7 @@ export class WrappingSelectList extends SelectList {
   }
 
   private internals(): SelectListInternals {
-    return this as unknown as SelectListInternals;
+    return getSelectListInternals(this);
   }
 }
 

@@ -53,6 +53,7 @@ function makeHost(options: { createGoalRejects?: boolean } = {}) {
         model: 'kimi-model',
         permissionMode: 'auto',
       },
+      swarmModeEntry: undefined as string | undefined,
       queuedMessages: [],
       theme: { palette: getBuiltInPalette('dark') },
       toolOutputExpanded: false,
@@ -72,6 +73,7 @@ function makeHost(options: { createGoalRejects?: boolean } = {}) {
       flushThinkingToTranscript: vi.fn(),
       appendAssistantDelta: vi.fn(),
       scheduleFlush: vi.fn(),
+      getTurnContext: vi.fn(() => ({ turnId: 1 })),
     },
     requireSession: vi.fn(() => session),
     setAppState: vi.fn(),
@@ -89,10 +91,27 @@ function makeHost(options: { createGoalRejects?: boolean } = {}) {
     sendQueuedMessage: vi.fn(),
     shiftQueuedMessage: vi.fn(),
     btwPanelController: { routeEvent: vi.fn(() => false) },
-    tasksBrowserController: {},
+    tasksBrowserController: { repaint: vi.fn(), refreshOutputViewer: vi.fn(async () => {}) },
+    renderSwarmModeMarker: vi.fn(),
+    renderGoalMarker: vi.fn(),
+    createMcpStatusSpinner: vi.fn(() => ({ stop: vi.fn(), setLabel: vi.fn() })),
+    replaceTranscriptComponent: vi.fn(),
+    syncBackgroundTaskBadge: vi.fn(),
+    // TranscriptContainerHost trait
+    addTranscriptChild: vi.fn(),
+    findTranscriptChild: vi.fn(() => undefined),
+    replaceTranscriptChild: vi.fn(),
+    spliceTranscriptChildren: vi.fn(() => []),
+    // TerminalSizable trait
+    getTerminalSize: vi.fn(() => ({ rows: 24, columns: 80 })),
   };
   host.setAppState.mockImplementation((patch: Record<string, unknown>) => {
     Object.assign(host.state.appState, patch);
+  });
+  host.renderGoalMarker.mockImplementation((marker: unknown) => {
+    if (marker !== null && marker !== undefined) {
+      host.state.transcriptContainer.addChild(marker);
+    }
   });
   host.streamingUI.finalizeTurn.mockImplementation(() => {
     host.setAppState({ streamingPhase: 'idle' });
@@ -446,5 +465,54 @@ describe('SessionEventHandler goal queue promotion', () => {
     expect(session.createGoal).not.toHaveBeenCalled();
     expect(host.sendNormalUserInput).not.toHaveBeenCalled();
     expect(host.sendQueuedMessage).not.toHaveBeenCalled();
+  });
+});
+
+describe('SessionEventHandler host method delegation', () => {
+  it('delegates swarm mode marker to host.renderSwarmModeMarker', () => {
+    const { host } = makeHost();
+    const handler = new SessionEventHandler(host);
+    // Set up swarm mode state so the ended marker triggers
+    host.state.appState.swarmMode = true;
+    host.state.swarmModeEntry = 'task';
+
+    handler.handleEvent({
+      type: 'agent.status.updated',
+      sessionId: 's1',
+      agentId: 'main',
+      swarmMode: false,
+    } as never, vi.fn());
+
+    expect(host.renderSwarmModeMarker).toHaveBeenCalledWith('ended');
+  });
+
+  it('delegates goal lifecycle marker to host.renderGoalMarker', () => {
+    const { host } = makeHost();
+    const handler = new SessionEventHandler(host);
+
+    // A non-blocked lifecycle change with a reason renders a marker directly
+    handler.handleEvent({
+      type: 'goal.updated',
+      sessionId: 's1',
+      agentId: 'main',
+      snapshot: fakeGoalSnapshot('Test goal', 'active'),
+      change: { kind: 'lifecycle', status: 'paused', actor: 'user', reason: 'manual' },
+    } as never, vi.fn());
+
+    expect(host.renderGoalMarker).toHaveBeenCalled();
+  });
+
+  it('delegates background task badge to host.syncBackgroundTaskBadge', () => {
+    const { host } = makeHost();
+    const handler = new SessionEventHandler(host);
+
+    handler.handleEvent({
+      type: 'background.task.started',
+      sessionId: 's1',
+      agentId: 'main',
+      info: { taskId: 'bg1', kind: 'bash', label: 'test', status: 'running', startedAt: Date.now() },
+    } as never, vi.fn());
+
+    expect(host.syncBackgroundTaskBadge).toHaveBeenCalled();
   });
 });

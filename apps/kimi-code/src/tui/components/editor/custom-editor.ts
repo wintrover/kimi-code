@@ -2,7 +2,7 @@
  * Custom editor extending pi-tui Editor with app-level keybindings.
  */
 
-import { Editor, SelectList, type SelectItem, type TUI } from '@earendil-works/pi-tui';
+import { Editor, SelectList, type TUI } from '@earendil-works/pi-tui';
 import {
   normalizeKeyData,
   matchesKey,
@@ -14,6 +14,7 @@ import { currentTheme } from '#/tui/theme';
 import { createEditorTheme } from '#/tui/theme/pi-tui-theme';
 
 import { WrappingSelectList } from './wrapping-select-list';
+import * as EditorAdapter from './editor-adapter';
 
 // oxlint-disable-next-line no-control-regex -- ESC (\x1b) is required to match ANSI SGR escape sequences
 const ANSI_SGR = /\u001B\[[0-9;]*m/g;
@@ -24,22 +25,7 @@ const BRACKET_PASTE_END = '\u001B[201~';
 
 // Kitty CSI-u Caps Lock normalization is centralized in #/tui/utils/key-input-adapter.
 
-interface AutocompleteInternals {
-  cancelAutocomplete(): void;
-  readonly autocompleteAbort?: AbortController;
-  readonly autocompleteDebounceTimer?: ReturnType<typeof setTimeout>;
-}
 
-interface AutocompleteListFactoryInternals {
-  createAutocompleteList?: (prefix: string, items: SelectItem[]) => SelectList;
-}
-
-// Mirror pi-tui's private SLASH_COMMAND_SELECT_LIST_LAYOUT
-// (dist/components/editor.js); keep in sync when bumping pi-tui.
-const SLASH_COMMAND_SELECT_LIST_LAYOUT = {
-  minPrimaryColumnWidth: 12,
-  maxPrimaryColumnWidth: 32,
-} as const;
 
 /** Convert a visible-char index (ANSI-stripped) back to an index into the raw ANSI-bearing string. */
 function mapVisibleIdxToRaw(line: string, visibleIdx: number): number {
@@ -111,24 +97,17 @@ export class CustomEditor extends Editor {
     const theme = createEditorTheme();
     super(tui, theme, { paddingX: 4 });
 
-    // pi-tui keeps `createAutocompleteList` private; shadow it with an
-    // instance property so slash command menus render descriptions wrapped
-    // to at most two lines. Non-slash completion (paths, @ mentions) keeps
-    // pi-tui's single-line list.
-    (this as unknown as AutocompleteListFactoryInternals).createAutocompleteList = (
-      prefix,
-      items,
-    ) => {
+    EditorAdapter.overrideCreateAutocompleteList(this, (prefix, items) => {
       if (prefix.startsWith('/')) {
         return new WrappingSelectList(
           items,
           this.getAutocompleteMaxVisible(),
           theme.selectList,
-          SLASH_COMMAND_SELECT_LIST_LAYOUT,
+          EditorAdapter.SLASH_COMMAND_SELECT_LIST_LAYOUT,
         );
       }
       return new SelectList(items, this.getAutocompleteMaxVisible(), theme.selectList);
-    };
+    });
   }
 
   private expandPasteMarkerAtCursor(): boolean {
@@ -142,7 +121,7 @@ export class CustomEditor extends Editor {
       if (col < start || col > end) continue;
 
       const pasteId = Number(match[1]);
-      const pastes = (this as unknown as { pastes: Map<number, string> }).pastes;
+      const pastes = EditorAdapter.getEditorPastes(this);
       const content = pastes.get(pasteId);
       if (content === undefined) return false;
 
@@ -156,18 +135,16 @@ export class CustomEditor extends Editor {
   }
 
   private hasAutocompleteActivity(): boolean {
-    const autocomplete = this as unknown as AutocompleteInternals;
     return (
       this.isShowingAutocomplete() ||
-      autocomplete.autocompleteAbort !== undefined ||
-      autocomplete.autocompleteDebounceTimer !== undefined
+      EditorAdapter.hasAutocompleteActivity(this)
     );
   }
 
   private cancelAutocompleteActivity(): void {
     // pi-tui exposes `isShowingAutocomplete()` but keeps cancellation private.
     // Kimi needs Esc to win over app-level cancel while the slash menu request is active.
-    (this as unknown as AutocompleteInternals).cancelAutocomplete();
+    EditorAdapter.cancelAutocomplete(this);
   }
 
   override render(width: number): string[] {
