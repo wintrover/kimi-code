@@ -2,15 +2,22 @@ import std/[os, osproc, posix, algorithm, strutils, sets, json]
 import checksums/sha1
 
 const
-  hashFileName = ".build-hash"
-  lockFileName = ".build-hash.lock"
+  defaultHashFileName = ".build-hash"
+  defaultLockFileName = ".build-hash.lock"
   markerFile = "pnpm-workspace.yaml"
   configFileName = ".kimi-gate.json"
+  hashConfigFileName = ".build-hash-config.json"
   buildFailTailLines = 20
   defaultBuildCmd = "pnpm --filter=@moonshot-ai/kimi-code run build"
-  excludedSet = ["node_modules", ".git", "dist", "dist-native",
-                 ".turbo", ".changeset", "node"].toHashSet()
-  sourceExts = [".ts", ".md", ".json"]
+  defaultExcludedDirs = ["node_modules", ".git", "dist", "dist-native",
+                         ".turbo", ".changeset", "node"]
+  defaultSourceExts = [".ts", ".md", ".json"]
+
+var
+  hashFileName = defaultHashFileName
+  lockFileName = defaultLockFileName
+  excludedSet = defaultExcludedDirs.toHashSet()
+  sourceExts: seq[string] = @[".ts", ".md", ".json"]
 
 # ── Path Resolution ──
 
@@ -30,6 +37,32 @@ proc findProjectRoot(): string =
   quit(1)
 
 # ── Config ──
+
+proc loadHashConfig(rootDir: string) =
+  let configPath = rootDir / hashConfigFileName
+  if not fileExists(configPath):
+    return
+  try:
+    let config = parseFile(configPath)
+    if config.hasKey("sourceExts"):
+      sourceExts = @[]
+      for ext in config["sourceExts"]:
+        sourceExts.add(ext.getStr())
+    if config.hasKey("excludedDirs"):
+      excludedSet = initHashSet[string]()
+      for d in config["excludedDirs"]:
+        excludedSet.incl(d.getStr())
+    if config.hasKey("hashFile"):
+      let v = config["hashFile"].getStr()
+      if v.len > 0:
+        hashFileName = v
+    if config.hasKey("lockFile"):
+      let v = config["lockFile"].getStr()
+      if v.len > 0:
+        lockFileName = v
+  except:
+    # Malformed config — fall back to defaults
+    discard
 
 proc loadBuildCommand(rootDir: string): string =
   let configPath = rootDir / configFileName
@@ -126,6 +159,7 @@ proc checkAndRebuild(rootDir: string) =
 
 proc main() =
   let rootDir = findProjectRoot()
+  loadHashConfig(rootDir)
   checkAndRebuild(rootDir)
   let distPath = rootDir / "apps" / "kimi-code" / "dist" / "main.mjs"
   let args = @["node", distPath] & commandLineParams()

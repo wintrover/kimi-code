@@ -1,0 +1,7 @@
+{
+  "sourceExts": [".ts", ".md", ".json"],
+  "excludedDirs": ["node_modules", ".git", "dist", "dist-native", ".turbo", ".changeset", "node"],
+  "hashAlgorithm": "sha1",
+  "hashFile": ".build-hash",
+  "lockFile": ".build-hash.lock"
+}
