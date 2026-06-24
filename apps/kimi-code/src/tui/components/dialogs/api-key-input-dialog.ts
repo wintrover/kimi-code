@@ -1,12 +1,11 @@
 import {
   Container,
   Input,
-  Key,
-  matchesKey,
   truncateToWidth,
   visibleWidth,
   type Focusable,
 } from '@earendil-works/pi-tui';
+import { safeMatchesKey, Key } from '#/tui/utils/key-input-adapter';
 
 import { currentTheme } from '#/tui/theme';
 
@@ -68,9 +67,9 @@ export class ApiKeyInputDialogComponent extends Container implements Focusable {
   handleInput(data: string): void {
     if (this.done) return;
     if (
-      matchesKey(data, Key.escape) ||
-      matchesKey(data, Key.ctrl('c')) ||
-      matchesKey(data, Key.ctrl('d'))
+      safeMatchesKey(data, Key.escape) ||
+      safeMatchesKey(data, Key.ctrl('c')) ||
+      safeMatchesKey(data, Key.ctrl('d'))
     ) {
       this.cancel();
       return;

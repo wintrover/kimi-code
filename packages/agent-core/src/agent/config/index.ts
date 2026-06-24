@@ -23,6 +23,7 @@ export class ConfigState {
   private _profileName: string | undefined;
   private _thinkingLevel: ThinkingEffort = 'off';
   private _systemPrompt: string = '';
+  private _maxTokens: number | undefined;
 
   constructor(protected readonly agent: Agent) {
     this._cwd = agent.kaos.getcwd();
@@ -59,6 +60,9 @@ export class ConfigState {
     if (changed.systemPrompt !== undefined) {
       this._systemPrompt = changed.systemPrompt;
     }
+    if (changed.maxTokens !== undefined) {
+      this._maxTokens = changed.maxTokens;
+    }
     if (this.hasProvider && (changed.cwd !== undefined || changed.modelAlias)) {
       void this.agent.tools.initializeBuiltinTools();
     }
@@ -75,6 +79,7 @@ export class ConfigState {
       profileName: this.profileName,
       thinkingLevel: this.thinkingLevel,
       systemPrompt: this.systemPrompt,
+      maxTokens: this._maxTokens,
     };
   }
 
@@ -140,6 +145,10 @@ export class ConfigState {
 
   get systemPrompt(): string {
     return this._systemPrompt;
+  }
+
+  get maxTokens(): number | undefined {
+    return this._maxTokens;
   }
 
   get modelCapabilities(): ModelCapability {

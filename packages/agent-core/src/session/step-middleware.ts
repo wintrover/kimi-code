@@ -129,14 +129,21 @@ export async function runBeforeStepPipeline(
   ctx: StepContext,
   onError?: (middlewareName: string, error: unknown) => void,
 ): Promise<StepMiddlewareResult> {
+  const injections: string[] = [];
   for (const middleware of pipeline) {
     try {
       const result = await middleware.process(ctx);
       if (result.action !== 'continue') return result;
+      if (result.recoveryInjections?.length) {
+        injections.push(...result.recoveryInjections);
+      }
     } catch (error) {
       onError?.(middleware.name, error);
       if (ctx.signal.aborted) return { action: 'halt' };
     }
+  }
+  if (injections.length > 0) {
+    return { action: 'continue', recoveryInjections: injections };
   }
   return { action: 'continue' };
 }

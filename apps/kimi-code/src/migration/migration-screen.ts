@@ -11,7 +11,8 @@
  * This file implements the ask, progress, and result phases. `beginMigration`
  * drives the real runMigration flow (injectable for tests).
  */
-import { Container, matchesKey, Key, truncateToWidth, type Focusable } from '@earendil-works/pi-tui';
+import { Container, truncateToWidth, type Focusable } from '@earendil-works/pi-tui';
+import { safeMatchesKey, Key } from '#/tui/utils/key-input-adapter';
 import chalk from 'chalk';
 
 import type { ColorPalette } from '#/tui/theme/colors';
@@ -181,7 +182,7 @@ export class MigrationScreenComponent extends Container implements Focusable {
       return;
     }
     if (this.phase === 'result') {
-      if (matchesKey(data, Key.enter)) {
+      if (safeMatchesKey(data, Key.enter)) {
         this.opts.onComplete({ decision: 'now', migrated: !this.migrationFailed });
       }
       return;
@@ -195,20 +196,20 @@ export class MigrationScreenComponent extends Container implements Focusable {
 
   private handleAskInput(data: string): void {
     const step = this.currentStep();
-    if (matchesKey(data, Key.up)) {
+    if (safeMatchesKey(data, Key.up)) {
       this.selectedIndex = Math.max(0, this.selectedIndex - 1);
       return;
     }
-    if (matchesKey(data, Key.down)) {
+    if (safeMatchesKey(data, Key.down)) {
       this.selectedIndex = Math.min(step.options.length - 1, this.selectedIndex + 1);
       return;
     }
-    if (matchesKey(data, Key.escape)) {
+    if (safeMatchesKey(data, Key.escape)) {
       // Esc anywhere in ask == "later"
       this.opts.onComplete({ decision: 'later' });
       return;
     }
-    if (matchesKey(data, Key.enter)) {
+    if (safeMatchesKey(data, Key.enter)) {
       const chosen = step.options[this.selectedIndex];
       if (chosen === undefined) return;
       this.advance(chosen.value);

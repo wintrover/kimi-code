@@ -41,9 +41,16 @@ import { renderUserPromptHookBlockResult, renderUserPromptHookResult } from '../
 import { canonicalTelemetryArgs, isPlainRecord } from './canonical-args';
 import { ToolCallDeduplicator } from './tool-dedup';
 import {
+  BudgetMiddleware,
+  RecoveryMiddleware,
   runBeforeStepPipeline,
   type StepMiddleware,
 } from '#/session/step-middleware';
+import type { PipelineServices } from './pipeline-services';
+import { ContextBudgetManager } from '#/session/context-budget';
+import { TurnBoundary } from '#/session/turn-boundary';
+import { MemoryCheckpointer } from '#/session/checkpoint';
+import { RecoveryPolicy } from '#/session/recovery-policy';
 import {
   createTurnStopPolicies,
   type TurnStopPolicy,
@@ -119,9 +126,17 @@ export class TurnFlow {
   private readonly stepFailureByTurn = new Map<number, LoopTurnInterruptedEvent>();
   private currentStep = 0;
   private readonly turnStopPolicies: readonly TurnStopPolicy[];
+  private readonly pipelineServices: PipelineServices;
 
   constructor(protected readonly agent: Agent) {
     this.turnStopPolicies = createTurnStopPolicies(this.agent);
+    this.pipelineServices = {
+      budgetManager: new ContextBudgetManager(),
+      turnBoundary: new TurnBoundary(),
+      checkpointStore: new MemoryCheckpointer(),
+      recoveryPolicy: new RecoveryPolicy(),
+      agentId: this.agent.type,
+    };
   }
 
   // Returns the new turnId, or null if the turn was marked as resuming.
@@ -939,9 +954,12 @@ export class TurnFlow {
   }
 
   private buildBeforeStepPipeline(): readonly StepMiddleware[] {
-    // TODO: Add BudgetMiddleware and RecoveryMiddleware when Agent exposes
-    // budgetManager, turnBoundary, checkpointStore, and recoveryPolicy.
-    return [];
+    const { budgetManager, turnBoundary, checkpointStore, recoveryPolicy, agentId } =
+      this.pipelineServices;
+    return [
+      new BudgetMiddleware(budgetManager, turnBoundary, checkpointStore),
+      new RecoveryMiddleware(recoveryPolicy, checkpointStore, agentId),
+    ];
   }
 
   /**

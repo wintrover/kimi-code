@@ -41,6 +41,7 @@ import {
 } from '../utils/abort';
 import { collectGitContext } from './git-context';
 import type { ContextBudgetManager } from './context-budget';
+import { SubagentBudgetGuard } from './subagent-budget-guard';
 import type { Session } from './index';
 import {
   SubagentBatch,
@@ -699,16 +700,16 @@ export class SessionSubagentHost {
       thinkingLevel: parent.config.thinkingLevel,
     });
 
-    // TODO: When AgentConfigUpdateData supports a `maxTokens` field, apply
-    // the subagent budget here:
-    //
-    //   if (options?.subagentBudget !== undefined) {
-    //     child.config.update({ maxTokens: options.subagentBudget });
-    //   }
-    //
-    // This would cap the child's output token generation to the budget
-    // computed by ContextBudgetManager.getSubagentBudget(), preventing
-    // subagents from consuming more than their fair share of the context window.
+    // Apply the subagent token budget via the budget guard, which caps the
+    // child's output token generation and emits observability signals.
+    if (options?.subagentBudget !== undefined) {
+      const guard = new SubagentBudgetGuard({
+        budgetManager: this.budgetManager,
+        telemetry: parent.telemetry,
+        parentAgent: parent,
+      });
+      guard.enforceBudget(profile.name, child);
+    }
 
     const context = await prepareSystemPromptContext(
       this.session.systemContextKaos(child.kaos.getcwd()),
