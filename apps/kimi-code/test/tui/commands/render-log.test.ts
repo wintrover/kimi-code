@@ -26,20 +26,20 @@ describe('handleRenderLogCommand', () => {
     } as ReturnType<typeof getDiagnostics>);
     const host = makeHost();
 
-    handleRenderLogCommand(host);
+    void handleRenderLogCommand(host);
 
     expect(host.showNotice).toHaveBeenCalledWith('No render events recorded yet');
     expect(host.showError).not.toHaveBeenCalled();
   });
 
-  it('shows path on successful dump', () => {
+  it('shows path on successful dump', async () => {
     vi.mocked(getDiagnostics).mockReturnValue({
       totalRecorded: 5,
-      dumpToFile: vi.fn().mockReturnValue('/tmp/test.jsonl'),
+      dumpToFile: vi.fn().mockResolvedValue('/tmp/test.jsonl'),
     } as ReturnType<typeof getDiagnostics>);
     const host = makeHost();
 
-    handleRenderLogCommand(host);
+    await handleRenderLogCommand(host);
 
     expect(host.showNotice).toHaveBeenCalledWith(
       'Render log saved',
@@ -48,16 +48,14 @@ describe('handleRenderLogCommand', () => {
     expect(host.showError).not.toHaveBeenCalled();
   });
 
-  it('shows error when dumpToFile throws', () => {
+  it('shows error when dumpToFile throws', async () => {
     vi.mocked(getDiagnostics).mockReturnValue({
       totalRecorded: 5,
-      dumpToFile: vi.fn().mockImplementation(() => {
-        throw new Error('disk full');
-      }),
+      dumpToFile: vi.fn().mockRejectedValue(new Error('disk full')),
     } as ReturnType<typeof getDiagnostics>);
     const host = makeHost();
 
-    handleRenderLogCommand(host);
+    await handleRenderLogCommand(host);
 
     expect(host.showError).toHaveBeenCalledWith(
       'Failed to dump render log: disk full',

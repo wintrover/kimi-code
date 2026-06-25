@@ -24,6 +24,9 @@ import {
 } from '#/utils/git/git-status';
 import { safeUsageRatio } from '#/utils/usage/usage-format';
 
+/** Footer always renders exactly this many lines. */
+export const FOOTER_HEIGHT = 2;
+
 const MAX_CWD_SEGMENTS = 3;
 const GOAL_TIMER_INTERVAL_MS = 1_000;
 

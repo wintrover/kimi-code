@@ -344,7 +344,7 @@ async function handleBuiltInSlashCommand(
       handleSecurityLogCommand(host, args);
       return;
     case 'render-log':
-      handleRenderLogCommand(host);
+      await handleRenderLogCommand(host);
       return;
     default:
       host.showError(`Unknown slash command: /${String(name)}`);

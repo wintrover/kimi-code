@@ -1,7 +1,7 @@
-import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { appendFile, mkdir, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 
-type RenderEventType = 'request' | 'suppress' | 'commit' | 'flush';
+type RenderEventType = 'request' | 'suppress' | 'commit' | 'flush' | 'bounds' | 'clamp';
 
 interface RenderEvent {
   readonly ts: number;
@@ -62,6 +62,7 @@ export class RenderDiagnostics {
   private lastDumpTime = 0;
   private lastDumpPath: string | null = null;
   private static readonly DUMP_COOLDOWN_MS = 5_000;
+  private pendingWrite: Promise<void> = Promise.resolve();
 
   constructor(capacity = 500) {
     this.capacity = capacity;
@@ -92,13 +93,13 @@ export class RenderDiagnostics {
     return this.count;
   }
 
-  dumpToFile(dir?: string): string {
+  async dumpToFile(dir?: string): Promise<string> {
     const resolvedDir = dir ?? '/tmp/kimi-code';
-    mkdirSync(resolvedDir, { recursive: true });
+    await mkdir(resolvedDir, { recursive: true });
     const ts = new Date().toISOString().replaceAll(/[:.]/g, '-');
     const filePath = join(resolvedDir, `render-log-${ts}.jsonl`);
     const lines = this.getEvents().map((e) => JSON.stringify(e));
-    writeFileSync(filePath, lines.join('\n') + '\n');
+    await writeFile(filePath, lines.join('\n') + '\n');
     return filePath;
   }
 
@@ -133,14 +134,29 @@ export class RenderDiagnostics {
     const now = Date.now();
     if (now - this.lastDumpTime >= RenderDiagnostics.DUMP_COOLDOWN_MS) {
       this.lastDumpTime = now;
-      // Append to existing file if within cooldown, otherwise create new
-      if (this.lastDumpPath !== null) {
-        const entry = JSON.stringify({ ts: performance.now(), violation: reason, caller: caller ?? '' });
-        appendFileSync(this.lastDumpPath, entry + '\n');
-      } else {
-        this.lastDumpPath = this.dumpToFile();
-      }
+      // Chain onto pendingWrite to preserve ordering; errors are swallowed.
+      this.pendingWrite = this.pendingWrite
+        .then(() => this.dumpAppendix(reason, caller))
+        .catch(() => { this.lastDumpPath = null; });
     }
+  }
+
+  private async dumpAppendix(reason: string, caller?: string): Promise<void> {
+    if (this.lastDumpPath !== null) {
+      await mkdir(dirname(this.lastDumpPath), { recursive: true });
+      const entry = JSON.stringify({ ts: performance.now(), violation: reason, caller: caller ?? '' });
+      await appendFile(this.lastDumpPath, entry + '\n');
+    } else {
+      this.lastDumpPath = await this.dumpToFile();
+    }
+  }
+
+  /** Wait for pending async I/O to complete. Gives up after timeoutMs. */
+  async flush(timeoutMs = 2000): Promise<void> {
+    await Promise.race([
+      this.pendingWrite,
+      new Promise<void>((resolve) => setTimeout(resolve, timeoutMs)),
+    ]);
   }
 
   /** Number of invariant violations detected. */

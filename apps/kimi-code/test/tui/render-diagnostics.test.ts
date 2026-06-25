@@ -129,7 +129,7 @@ describe('render-diagnostics', () => {
         suppressedCount: 0,
       });
 
-      const filePath = diag.dumpToFile(DUMP_DIR);
+      const filePath = await diag.dumpToFile(DUMP_DIR);
       expect(filePath).toMatch(/\.jsonl$/);
 
       const content = readFileSync(filePath, 'utf-8');
@@ -298,6 +298,32 @@ describe('render-diagnostics', () => {
         true,
       );
       expect(commitResult).toBeNull();
+    });
+
+    it('triggerAutoDump survives directory deletion between calls', () => {
+      const diag = new RenderDiagnostics();
+      diag.record({
+        type: 'request',
+        caller: 'test',
+        force: false,
+        depth: 0,
+        suppressedCount: 0,
+      });
+
+      // First call creates the file
+      diag.triggerAutoDump('Test');
+      expect(diag.getViolationCount()).toBe(1);
+
+      // Simulate tmp cleanup
+      try {
+        rmSync('/tmp/kimi-code', { recursive: true, force: true });
+      } catch {
+        // ignore
+      }
+
+      // Second call should NOT crash — directory is recreated
+      diag.triggerAutoDump('Test 2');
+      expect(diag.getViolationCount()).toBe(2);
     });
   });
 });

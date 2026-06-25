@@ -153,7 +153,7 @@ export async function handleExportDebugZipCommand(host: SlashCommandHost): Promi
     const linked = toTerminalHyperlink(result.zipPath, pathToFileURL(result.zipPath).href);
     const diagnostics = getDiagnostics();
     if (diagnostics.totalRecorded > 0) {
-      const renderLogPath = diagnostics.dumpToFile();
+      const renderLogPath = await diagnostics.dumpToFile();
       host.showNotice('Export complete + render log saved', `${linked}\nRender log: ${renderLogPath}`);
       return;
     }

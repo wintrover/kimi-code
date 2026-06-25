@@ -33,6 +33,7 @@ export class RenderTransaction {
   private pending = false;
   private depth = 0;
   private suppressedCount = 0;
+  private _isCommitting = false;
   private readonly diagnostics: RenderDiagnostics | null;
 
   constructor(ui: TUI, diagnostics?: RenderDiagnostics) {
@@ -43,6 +44,11 @@ export class RenderTransaction {
   /** Current nesting depth. 0 means no active transaction. */
   getDepth(): number {
     return this.depth;
+  }
+
+  /** True only during the synchronous window between restoring requestRender and the commit flush completing. */
+  get isCommitting(): boolean {
+    return this._isCommitting;
   }
 
   /**
@@ -100,7 +106,12 @@ export class RenderTransaction {
         // Use differential render (not force) — pi-tui's line-by-line diff
         // will only repaint changed lines. Force render is reserved for
         // resize events where the viewport state machine needs a full reset.
-        this.savedRequestRender?.call(this.ui);
+        this._isCommitting = true;
+        try {
+          this.savedRequestRender?.call(this.ui);
+        } finally {
+          this._isCommitting = false;
+        }
       }
     }
   }

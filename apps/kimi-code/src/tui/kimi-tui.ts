@@ -26,7 +26,7 @@ import type { CLIOptions } from '#/cli/options';
 import { MigrationScreenComponent, type MigrationScreenResult } from '#/migration/index';
 import { appendInputHistory, loadInputHistory } from '#/utils/history/input-history';
 import { RenderTransaction } from '#/tui/render-transaction';
-import { captureCaller, getDiagnostics, isEnabled } from '#/tui/render-diagnostics';
+import { captureCaller, getDiagnostics } from '#/tui/render-diagnostics';
 import type { RenderDiagnostics } from '#/tui/render-diagnostics';
 import { openUrl } from '#/utils/open-url';
 import { getInputHistoryFile } from '#/utils/paths';
@@ -46,6 +46,7 @@ import * as slashCommands from './commands/dispatch';
 import { BannerComponent } from './components/chrome/banner';
 import { DeviceCodeBoxComponent } from './components/chrome/device-code-box';
 import { GutterContainer } from './components/chrome/gutter-container';
+import { FOOTER_HEIGHT } from './components/chrome/footer';
 import { MoonLoader, type SpinnerStyle } from './components/chrome/moon-loader';
 import { WelcomeComponent } from './components/chrome/welcome';
 import {
@@ -229,6 +230,7 @@ export class KimiTUI {
   private lastActivityMode: string | undefined;
   private currentActivityPane: ActivityPaneComponent | null = null;
   private lastHistoryContent: string | undefined;
+  private cachedChromeHeight = FOOTER_HEIGHT + 3; // footer(2) + editor(3) minimum
   readonly streamingUI: StreamingUIController;
   readonly authFlow: AuthFlowController;
   readonly btwPanelController: BtwPanelController;
@@ -281,28 +283,32 @@ export class KimiTUI {
     this.state.ui.requestRender = (force?: boolean) => {
       const depth = this.renderTransaction.getDepth();
       const isStreaming = this.state.appState.streamingPhase !== 'idle';
+      const isCommitting = this.renderTransaction.isCommitting;
 
-      // Always-on invariant checking (zero cost — no captureCaller)
-      const violation = this.renderDiagnostics.checkInvariant(
-        { type: 'request', caller: '', force: force ?? false, depth, suppressedCount: 0 },
-        isStreaming,
-      );
-      if (violation) {
-        // Capture caller only on violation (one-time cost)
-        this.renderDiagnostics.triggerAutoDump(violation, captureCaller());
+      // Normal commit render — pass through
+      if (isCommitting) {
+        originalRequestRender(force);
+        return;
       }
 
-      // Full event recording — opt-in only (expensive per-frame stack capture)
-      if (isEnabled()) {
-        this.renderDiagnostics.record({
-          type: 'request',
-          caller: captureCaller(),
-          force: force ?? false,
-          depth,
-          suppressedCount: 0,
-        });
+      // Rendering outside transaction during streaming → gate block
+      if (isStreaming && depth === 0) {
+        const caller = captureCaller();
+        this.renderDiagnostics?.triggerAutoDump('Transaction Leak', caller);
+
+        if (process.env['NODE_ENV'] === 'development' || process.env['KIMI_CODE_RENDER_STRICT'] === '1') {
+          throw new Error(`Illegal Render: Attempted to render outside of a transaction. Caller: ${caller}`);
+        }
+        // Prod: defer to next tick
+        process.nextTick(() => originalRequestRender(force));
+        return;
       }
 
+      // Force render (resize): recalculate bounds before passing through
+      if (force) {
+        this.updateTranscriptBounds();
+      }
+      // Normal path
       originalRequestRender(force);
     };
     this.renderTransaction = new RenderTransaction(
@@ -665,6 +671,7 @@ export class KimiTUI {
     await this.harness.close();
     this.sessionEventHandler.stopAllMcpServerStatusSpinners();
     this.uninstallRainbowDance();
+    await this.renderDiagnostics?.flush().catch(() => {});
     await this.state.terminal.drainInput();
     this.state.ui.stop();
     if (this.onExit) {
@@ -760,6 +767,30 @@ export class KimiTUI {
     const footerWrap = new GutterContainer(CHROME_GUTTER, CHROME_GUTTER);
     footerWrap.addChild(this.state.footer);
     this.state.ui.addChild(footerWrap);
+  }
+
+  /** Upper-bound estimate of all non-transcript chrome lines. */
+  private measureChromeHeight(): number {
+    let chrome = FOOTER_HEIGHT + 3; // footer(2) + editor(3 minimum)
+    if (this.currentActivityPane !== null) chrome += 2;
+    if (!this.state.todoPanel.isEmpty()) chrome += 8;
+    chrome += this.state.queuedMessages.length;
+    return chrome;
+  }
+
+  /** Clamp transcriptContainer maxHeight so it + chrome ≤ terminal.rows. */
+  private updateTranscriptBounds(): void {
+    const rows = this.state.terminal.rows;
+    const chromeHeight = this.cachedChromeHeight;
+    const maxHeight = Math.max(1, rows - chromeHeight);
+    this.state.transcriptContainer.setMaxHeight(maxHeight);
+    this.renderDiagnostics?.record({
+      type: 'bounds',
+      caller: `rows=${rows} chrome=${chromeHeight} maxH=${maxHeight}`,
+      force: false,
+      depth: 0,
+      suppressedCount: 0,
+    });
   }
 
   // =========================================================================
@@ -1065,6 +1096,7 @@ export class KimiTUI {
         this.updateQueueDisplay();
         this.sessionEventHandler.retryQueuedGoalPromotion();
       }
+      this.updateTranscriptBounds();
     } finally {
       this.renderTransaction.commit();
     }
@@ -1569,7 +1601,7 @@ export class KimiTUI {
 
   createMcpStatusSpinner(label: string): MoonLoader {
     const tint = (s: string): string => currentTheme.fg('textMuted', s);
-    const spinner = new MoonLoader(this.state.ui, 'braille', tint, label);
+    const spinner = new MoonLoader(this.state.ui, this.renderTransaction, 'braille', tint, label);
     this.state.transcriptContainer.addChild(spinner);
     this.state.ui.requestRender();
     return spinner;
@@ -1673,6 +1705,9 @@ export class KimiTUI {
     if (this.renderDiagnostics) {
       this.renderDiagnostics.setPostCommit();
     }
+    // Refresh chrome height cache for next frame (1-frame lag, imperceptible)
+    this.cachedChromeHeight = this.measureChromeHeight();
+    this.updateTranscriptBounds();
   }
 
   showError(message: string): void {
@@ -1685,7 +1720,7 @@ export class KimiTUI {
 
   showProgressSpinner(label: string): LoginProgressSpinnerHandle {
     const tint = (s: string): string => currentTheme.fg('primary', s);
-    const spinner = new MoonLoader(this.state.ui, 'braille', tint, label);
+    const spinner = new MoonLoader(this.state.ui, this.renderTransaction, 'braille', tint, label);
     this.state.transcriptContainer.addChild(new Spacer(1));
     this.state.transcriptContainer.addChild(spinner);
     this.state.ui.requestRender();
@@ -1932,7 +1967,7 @@ export class KimiTUI {
     }
 
     if (this.state.activitySpinner === null) {
-      const instance = new MoonLoader(this.state.ui, style, colorFn, label);
+      const instance = new MoonLoader(this.state.ui, this.renderTransaction, style, colorFn, label);
       this.state.activitySpinner = { instance, style };
       return instance;
     }
