@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, renameSync, mkdirSync } from 'node:fs';
 import { builtinModules } from 'node:module';
 import { resolve } from 'node:path';
 
@@ -31,6 +31,46 @@ function buildTarget(): string {
   return process.env['KIMI_CODE_BUILD_TARGET'] ?? `${process.platform}-${process.arch}`;
 }
 
+/**
+ * Rolldown plugin that writes a build manifest after each successful build.
+ * The manifest lists the actual source files bundled into the output,
+ * enabling the kimi wrapper to hash only files that matter.
+ */
+function manifestPlugin(): import('tsdown').TsdownPlugin {
+  const manifestDir = resolve(appRoot, 'dist-native/intermediates');
+  return {
+    name: 'build-manifest',
+    generateBundle(_options, bundle) {
+      const modules = new Set<string>();
+      for (const [, output] of Object.entries(bundle)) {
+        if (output.type === 'chunk') {
+          for (const moduleId of (output as { moduleIds?: string[] }).moduleIds ?? []) {
+            if (!moduleId.includes('node_modules') && !moduleId.startsWith('\0')) {
+              modules.add(moduleId);
+            }
+          }
+        }
+      }
+      const manifest = {
+        version: 1,
+        generatedAt: new Date().toISOString(),
+        entry: './src/main.ts',
+        bundledModules: [...modules].sort(),
+        configFiles: [
+          'tsdown.native.config.ts',
+          'scripts/built-in-catalog.mjs',
+          '../../build/raw-text-plugin.mjs',
+        ],
+      };
+      const manifestPath = `${manifestDir}/build-manifest.json`;
+      const tmpPath = `${manifestPath}.tmp.${process.pid}`;
+      mkdirSync(manifestDir, { recursive: true });
+      writeFileSync(tmpPath, JSON.stringify(manifest, null, 2) + '\n');
+      renameSync(tmpPath, manifestPath);
+    },
+  };
+}
+
 export default defineConfig({
   entry: ['./src/main.ts'],
   format: ['cjs'],
@@ -42,7 +82,7 @@ export default defineConfig({
   platform: 'node',
   target: 'node24',
   banner: { js: '#!/usr/bin/env node' },
-  plugins: [rawTextPlugin()],
+  plugins: [rawTextPlugin(), manifestPlugin()],
   alias: {
     '@': resolve(appRoot, 'src'),
   },

@@ -13,7 +13,12 @@ export async function runBundleStep() {
   // tsdown run here never goes through the npm `prebuild` lifecycle, so the
   // generated module must be produced explicitly first or the bundle would
   // miss it (npm builds get it via the `prebuild` script).
-  await run(process.execPath, [buildVisAssetPath]);
+  // Skip when KIMI_VIS_ASSET_BUILT=1 is set by the kimy wrapper.
+  if (process.env.KIMI_VIS_ASSET_BUILT === '1') {
+    console.log('[build-vis-asset] skipping (already built by wrapper)');
+  } else {
+    await run(process.execPath, [buildVisAssetPath]);
+  }
   await run(process.execPath, [tsdownCliPath, '--config', 'tsdown.native.config.ts']);
   await run(process.execPath, [checkBundlePath]);
 }
