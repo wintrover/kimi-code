@@ -659,6 +659,7 @@ export class TurnFlow {
               this.agent.log.warn('goal token accounting failed', { error });
             }
           },
+          onRateLimitFallback: this.agent.rateLimitHandler,
           hooks: {
             beforeStep: async ({ signal: stepSignal }) => {
               this.flushSteerBuffer();

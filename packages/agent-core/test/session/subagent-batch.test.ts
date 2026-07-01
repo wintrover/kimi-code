@@ -11,6 +11,7 @@ import {
 import {
   SubagentBatch,
   resolveSwarmMaxConcurrency,
+  type BatchExecutionContext,
   type SubagentBatchLauncher,
   type SubagentResult,
   type SubagentSuspendedEvent,
@@ -737,6 +738,138 @@ describe('SubagentBatch max concurrency cap', () => {
   });
 });
 
+describe('BatchExecutionContext rate-limit fallback', () => {
+  it('passes BatchExecutionContext with fallbackModel to launcher methods', async () => {
+    vi.useFakeTimers();
+    try {
+      const capturedContexts: BatchExecutionContext[] = [];
+      const { runBatch, attempts } = createMockBatchRunner({
+        onContext: (ctx) => capturedContexts.push(ctx),
+      });
+      const controller = new AbortController();
+      const running = runBatch(
+        Array.from({ length: 2 }, (_, index) => queuedTask(index + 1)),
+        { signal: controller.signal },
+        { fallbackModel: 'fallback-model' },
+      );
+      void running.catch(() => {});
+
+      await vi.advanceTimersByTimeAsync(0);
+      expect(attempts).toHaveLength(2);
+      expect(capturedContexts).toHaveLength(2);
+      expect(capturedContexts[0]!.fallbackModel).toBe('fallback-model');
+      expect(capturedContexts[0]!.isRateLimited).toBe(false);
+
+      // Clean up
+      attempts.forEach((a) => a.outcome.resolve({
+        task: a.task, agentId: 'done', status: 'completed', result: 'ok',
+      }));
+      await running;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('context.isRateLimited is a live getter that reflects batch rateLimitMode', async () => {
+    vi.useFakeTimers();
+    try {
+      const capturedContexts: BatchExecutionContext[] = [];
+      const controller = new AbortController();
+      const { runBatch, attempts } = createMockBatchRunner({
+        onContext: (ctx) => capturedContexts.push(ctx),
+      });
+      const running = runBatch(
+        Array.from({ length: 5 }, (_, index) => queuedTask(index + 1)),
+        { signal: controller.signal },
+        { fallbackModel: 'mimo-v2.5' },
+      );
+      void running.catch(() => {});
+
+      await vi.advanceTimersByTimeAsync(0);
+      expect(attempts).toHaveLength(5);
+
+      // Before rate limit, the captured context should show isRateLimited = false.
+      // Because isRateLimited is a getter, the same object reference will later
+      // reflect the live batch state.
+      const firstContext = capturedContexts[0]!;
+      expect(firstContext.isRateLimited).toBe(false);
+      expect(firstContext.fallbackModel).toBe('mimo-v2.5');
+
+      // Mark all ready, then trigger rate limit on first attempt
+      attempts.forEach((a) => a.markReady());
+      attempts[0]!.outcome.resolve({ type: 'rate_limited', agentId: 'agent-1' });
+      await vi.advanceTimersByTimeAsync(0);
+
+      // The same context object now reflects isRateLimited = true
+      expect(firstContext.isRateLimited).toBe(true);
+
+      controller.abort();
+      await expect(running).rejects.toThrow();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('each batch has a unique batchId', async () => {
+    vi.useFakeTimers();
+    try {
+      const capturedContexts: BatchExecutionContext[] = [];
+      const { runBatch, attempts } = createMockBatchRunner({
+        onContext: (ctx) => capturedContexts.push(ctx),
+      });
+      const controller = new AbortController();
+      const running = runBatch(
+        Array.from({ length: 3 }, (_, index) => queuedTask(index + 1)),
+        { signal: controller.signal },
+        { fallbackModel: 'fallback' },
+      );
+      void running.catch(() => {});
+
+      await vi.advanceTimersByTimeAsync(0);
+      expect(attempts).toHaveLength(3);
+
+      // All contexts in the same batch should have the same batchId
+      const batchIds = capturedContexts.map((c) => c.batchId);
+      expect(new Set(batchIds).size).toBe(1);
+      expect(batchIds[0]).toMatch(/^batch-/);
+
+      attempts.forEach((a) => a.outcome.resolve({
+        task: a.task, agentId: 'done', status: 'completed', result: 'ok',
+      }));
+      await running;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('context.fallbackModel is undefined when no fallback is configured', async () => {
+    vi.useFakeTimers();
+    try {
+      const capturedContexts: BatchExecutionContext[] = [];
+      const { runBatch, attempts } = createMockBatchRunner({
+        onContext: (ctx) => capturedContexts.push(ctx),
+      });
+      const controller = new AbortController();
+      const running = runBatch(
+        Array.from({ length: 2 }, (_, index) => queuedTask(index + 1)),
+        { signal: controller.signal },
+      );
+      void running.catch(() => {});
+
+      await vi.advanceTimersByTimeAsync(0);
+      expect(attempts).toHaveLength(2);
+      expect(capturedContexts[0]!.fallbackModel).toBeUndefined();
+
+      attempts.forEach((a) => a.outcome.resolve({
+        task: a.task, agentId: 'done', status: 'completed', result: 'ok',
+      }));
+      await running;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 type MockAttemptOutcome<T> =
   | SubagentResult<T>
   | {
@@ -755,6 +888,7 @@ type MockBatchRunnerOptions = {
   readonly onSuspended?: (event: SubagentSuspendedEvent) => void;
   readonly readyDelay?: (attemptIndex: number) => number | undefined;
   readonly maxConcurrency?: number;
+  readonly onContext?: (context: BatchExecutionContext) => void;
 };
 
 function createMockBatchRunner(
@@ -801,7 +935,8 @@ function createMockBatchRunner(
   };
 
   const host = {
-    spawn: async (spawnOptions: SpawnSubagentOptions) => {
+    spawn: async (spawnOptions: SpawnSubagentOptions, context?: BatchExecutionContext) => {
+      if (context) options.onContext?.(context);
       const task = findMockTask(activeTasks, spawnOptions);
       return createHandle(
         spawnOptions,
@@ -810,10 +945,14 @@ function createMockBatchRunner(
         false,
       );
     },
-    resume: async (agentId: string, runOptions: RunSubagentOptions) =>
-      createHandle(runOptions, agentId, 'subagent', true),
-    retry: async (agentId: string, runOptions: RunSubagentOptions) =>
-      createHandle(runOptions, agentId, 'subagent', true, agentId),
+    resume: async (agentId: string, runOptions: RunSubagentOptions, context?: BatchExecutionContext) => {
+      if (context) options.onContext?.(context);
+      return createHandle(runOptions, agentId, 'subagent', true);
+    },
+    retry: async (agentId: string, runOptions: RunSubagentOptions, context?: BatchExecutionContext) => {
+      if (context) options.onContext?.(context);
+      return createHandle(runOptions, agentId, 'subagent', true, agentId);
+    },
     suspended: (event: SubagentSuspendedEvent) => {
       options.onSuspended?.(event);
     },
@@ -823,6 +962,7 @@ function createMockBatchRunner(
     runBatch: <T,>(
       tasks: readonly QueuedSubagentTask<T>[],
       runOptions?: { readonly signal?: AbortSignal },
+      batchOptions?: { readonly fallbackModel?: string },
     ) => {
       activeTasks = tasks.map((task) => ({
         ...task,
@@ -830,6 +970,7 @@ function createMockBatchRunner(
       }));
       return new SubagentBatch(host, activeTasks as readonly QueuedSubagentTask<T>[], {
         maxConcurrency: options.maxConcurrency,
+        fallbackModel: batchOptions?.fallbackModel,
       }).run();
     },
     attempts,

@@ -40,6 +40,7 @@ export interface ExecuteLoopStepDeps {
   readonly log?: Logger | undefined;
   readonly currentStep: number;
   readonly maxRetryAttempts?: number;
+  readonly onRateLimitFallback?: ((error: unknown) => Promise<LLM | undefined>) | undefined;
   readonly recordUsage: (usage: TokenUsage) => RecordStepUsageResult | void | Promise<RecordStepUsageResult | void>;
 }
 
@@ -62,6 +63,7 @@ export async function executeLoopStep(deps: ExecuteLoopStepDeps): Promise<Execut
     log,
     currentStep,
     maxRetryAttempts,
+    onRateLimitFallback,
     recordUsage,
   } = deps;
 
@@ -123,6 +125,7 @@ export async function executeLoopStep(deps: ExecuteLoopStepDeps): Promise<Execut
     stepUuid,
     maxAttempts: maxRetryAttempts,
     log,
+    onRateLimitFallback,
   });
   const usage = response.usage;
   const usageResult = await recordUsage(usage);

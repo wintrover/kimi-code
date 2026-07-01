@@ -129,6 +129,7 @@ export class Agent {
   readonly replayBuilder: ReplayBuilder;
 
   private additionalDirs: readonly string[];
+  private _onRateLimit?: (error: unknown) => Promise<import('../loop/llm').LLM | undefined>;
 
   constructor(options: AgentOptions) {
     this.type = options.type ?? 'main';
@@ -199,6 +200,20 @@ export class Agent {
     if (this.config.hasProvider) {
       this.tools.initializeBuiltinTools();
     }
+  }
+
+  /**
+   * Install (or clear) a rate-limit fallback handler.
+   * When set, the turn loop calls this on 429 errors to obtain a
+   * replacement LLM (e.g., with a fallback model) before retrying.
+   */
+  setOnRateLimit(handler: ((error: unknown) => Promise<import('../loop/llm').LLM | undefined>) | undefined): void {
+    this._onRateLimit = handler;
+  }
+
+  /** Rate-limit fallback handler for the turn loop. */
+  get rateLimitHandler(): ((error: unknown) => Promise<import('../loop/llm').LLM | undefined>) | undefined {
+    return this._onRateLimit;
   }
 
   get generate(): typeof generate {

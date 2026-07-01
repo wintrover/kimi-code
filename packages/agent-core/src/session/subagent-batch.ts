@@ -7,6 +7,19 @@ import type {
   SubagentHandle,
 } from './subagent-host';
 import { isUserCancellation } from '../utils/abort';
+import { PhaseTransitionLog, type PhaseTransitionSnapshot } from './typestate';
+
+/**
+ * Immutable view of a batch's execution state, passed to the launcher
+ * so model resolution can be context-aware without mutating host state.
+ * Uses a getter for `isRateLimited` to provide live reads of the batch's
+ * internal rate-limit mode.
+ */
+export interface BatchExecutionContext {
+  readonly batchId: string;
+  readonly isRateLimited: boolean;
+  readonly fallbackModel?: string;
+}
 
 /*
 Subagent batch scheduling contract:
@@ -84,9 +97,9 @@ export type SubagentSuspendedEvent = {
 };
 
 export type SubagentBatchLauncher = {
-  spawn(options: SpawnSubagentOptions): Promise<SubagentHandle>;
-  resume(agentId: string, options: RunSubagentOptions): Promise<SubagentHandle>;
-  retry(agentId: string, options: RunSubagentOptions): Promise<SubagentHandle>;
+  spawn(options: SpawnSubagentOptions, context?: BatchExecutionContext): Promise<SubagentHandle>;
+  resume(agentId: string, options: RunSubagentOptions, context?: BatchExecutionContext): Promise<SubagentHandle>;
+  retry(agentId: string, options: RunSubagentOptions, context?: BatchExecutionContext): Promise<SubagentHandle>;
   suspended?(event: SubagentSuspendedEvent): void;
 };
 
@@ -123,9 +136,20 @@ export type SubagentBatchOptions = {
    * phase is governed by its own capacity logic and is not affected.
    */
   readonly maxConcurrency?: number;
+  readonly fallbackModel?: string;
 };
 
 export class SubagentBatch<T> {
+  private static nextBatchId = 0;
+  private readonly batchId = `batch-${SubagentBatch.nextBatchId++}`;
+
+  /**
+   * Live read-only context for this batch. The `isRateLimited` getter
+   * reads the batch's internal `rateLimitMode` at access time, providing
+   * real-time state without exposing mutable internals.
+   */
+  public readonly context: BatchExecutionContext;
+
   private readonly states: Array<TaskState<T>>;
   private readonly pending: Array<TaskState<T>>;
   private readonly results: Array<SubagentResult<T> | undefined>;
@@ -149,6 +173,7 @@ export class SubagentBatch<T> {
   private lastCapacityRecoveryAt: number | undefined;
   private globalRetryIntervalMs = RATE_LIMIT_RETRY_BASE_MS;
   private nextRateLimitLaunchAt = 0;
+  private transitionLog = new PhaseTransitionLog();
 
   constructor(
     private readonly launcher: SubagentBatchLauncher,
@@ -156,6 +181,14 @@ export class SubagentBatch<T> {
     options: SubagentBatchOptions = {},
   ) {
     this.maxConcurrency = options.maxConcurrency;
+    const batch = this;
+    this.context = {
+      batchId: this.batchId,
+      fallbackModel: options.fallbackModel,
+      get isRateLimited(): boolean {
+        return batch.rateLimitMode;
+      },
+    };
     this.states = tasks.map((task, index) => ({
       index,
       task,
@@ -174,6 +207,26 @@ export class SubagentBatch<T> {
         this.fail(this.batchSignal?.reason ?? new Error('Aborted'));
       }
     };
+  }
+
+  private recordTransition(
+    toPhase: 'rate_limited' | 'completed' | 'cancelled',
+    trigger?: PhaseTransitionSnapshot['trigger'],
+  ): void {
+    const snapshot: PhaseTransitionSnapshot = {
+      timestamp: Date.now(),
+      fromPhase: this.rateLimitMode ? 'rate_limited' : this.finished ? 'completed' : this.started ? 'ramping' : 'idle',
+      toPhase,
+      trigger,
+      activeAttemptCount: this.active.size,
+      pendingTaskCount: this.pending.length,
+    };
+    this.transitionLog = this.transitionLog.record(snapshot);
+  }
+
+  /** Debug: get transition history for time-travel debugging */
+  public getTransitionHistory() {
+    return this.transitionLog.getHistory();
   }
 
   run(): Promise<Array<SubagentResult<T>>> {
@@ -317,16 +370,16 @@ export class SubagentBatch<T> {
     try {
       attempt.controller.signal.throwIfAborted();
       if (attempt.state.retryAgentId !== undefined) {
-        handle = await this.launcher.retry(attempt.state.retryAgentId, runOptions);
+        handle = await this.launcher.retry(attempt.state.retryAgentId, runOptions, this.context);
       } else if (task.kind === 'resume') {
-        handle = await this.launcher.resume(task.resumeAgentId, runOptions);
+        handle = await this.launcher.resume(task.resumeAgentId, runOptions, this.context);
       } else {
         const spawnOptions: SpawnSubagentOptions = {
           profileName: task.profileName,
           swarmItem: task.swarmItem,
           ...runOptions,
         };
-        handle = await this.launcher.spawn(spawnOptions);
+        handle = await this.launcher.spawn(spawnOptions, this.context);
       }
     } catch (error) {
       return this.failedAttemptOutcome(attempt, error);
@@ -461,6 +514,7 @@ export class SubagentBatch<T> {
   }
 
   private enterRateLimitMode(now: number): void {
+    this.recordTransition('rate_limited');
     if (!this.rateLimitMode) {
       this.rateLimitMode = true;
       this.clearNormalTimer();
@@ -552,7 +606,7 @@ export class SubagentBatch<T> {
 
   private finishWithUserCancellation(): void {
     if (this.finished) return;
-
+    this.recordTransition('cancelled');
     this.finish(
       this.states.map((state) => {
         const result = this.results[state.index];
@@ -582,6 +636,7 @@ export class SubagentBatch<T> {
 
   private finish(results: Array<SubagentResult<T>>): void {
     if (this.finished) return;
+    this.recordTransition('completed');
     this.finished = true;
     this.cleanup();
     this.resolve?.(results);

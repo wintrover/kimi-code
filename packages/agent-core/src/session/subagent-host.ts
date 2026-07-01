@@ -20,11 +20,14 @@ import {
   userCancellationReason,
 } from '../utils/abort';
 import { collectGitContext } from './git-context';
+import { ProviderCircuitBreaker } from './provider-circuit-breaker';
+import { resolveModel, createCircuitSnapshot, createRoutingSnapshot } from './model-router';
 import type { AgentContext } from '#/config/agent-context';
 import type { Session } from './index';
 import {
   SubagentBatch,
   resolveSwarmMaxConcurrency,
+  type BatchExecutionContext,
   type SubagentResult,
   type SubagentSuspendedEvent,
   type QueuedSubagentTask,
@@ -101,6 +104,8 @@ export type SubagentHandle = {
 
 export class SessionSubagentHost {
   private _runtimeSubagentModel: string | null = null;
+  private readonly circuitBreaker = new ProviderCircuitBreaker();
+  private readonly modelProviderMap = new Map<string, string>();
   private readonly activeChildren = new Map<
     string,
     {
@@ -124,7 +129,22 @@ export class SessionSubagentHost {
     this._runtimeSubagentModel = model;
   }
 
-  async spawn(options: SpawnSubagentOptions): Promise<SubagentHandle> {
+  /** Record a successful provider call for circuit breaker tracking */
+  public recordProviderSuccess(providerId: string): void {
+    this.circuitBreaker.recordSuccess(providerId);
+  }
+
+  /** Record a failed provider call for circuit breaker tracking */
+  public recordProviderFailure(providerId: string): void {
+    this.circuitBreaker.recordFailure(providerId);
+  }
+
+  /** Register a model → provider mapping for circuit-aware routing */
+  public registerModelProvider(modelAlias: string, providerId: string): void {
+    this.modelProviderMap.set(modelAlias, providerId);
+  }
+
+  async spawn(options: SpawnSubagentOptions, context?: BatchExecutionContext): Promise<SubagentHandle> {
     options.signal.throwIfAborted();
 
     const parent = await this.session.ensureAgentResumed(this.ownerAgentId);
@@ -136,7 +156,7 @@ export class SessionSubagentHost {
     const completion = this.runWithActiveChild(id, options, async (runOptions) => {
       this.emitSubagentSpawned(parent, id, profile.name, runOptions);
       try {
-        await this.configureChild(parent, agent, profile);
+        await this.configureChild(parent, agent, profile, context);
         return await this.runPromptTurn(parent, id, agent, profile.name, runOptions);
       } catch (error) {
         this.emitSubagentFailed(parent, id, runOptions, error);
@@ -151,9 +171,10 @@ export class SessionSubagentHost {
     };
   }
 
-  async resume(agentId: string, options: RunSubagentOptions): Promise<SubagentHandle> {
+  async resume(agentId: string, options: RunSubagentOptions, context?: BatchExecutionContext): Promise<SubagentHandle> {
     options.signal.throwIfAborted();
     const { parent, child, profileName } = await this.ensureIdleSubagent(agentId);
+    child.config.setModelAliasResolver(() => this.resolveChildModel(parent, context));
     const completion = this.runWithActiveChild(agentId, options, async (runOptions) => {
       this.emitSubagentSpawned(parent, agentId, profileName, runOptions);
       try {
@@ -166,9 +187,10 @@ export class SessionSubagentHost {
     return { agentId, profileName, resumed: true, completion };
   }
 
-  async retry(agentId: string, options: RunSubagentOptions): Promise<SubagentHandle> {
+  async retry(agentId: string, options: RunSubagentOptions, context?: BatchExecutionContext): Promise<SubagentHandle> {
     options.signal.throwIfAborted();
     const { parent, child, profileName } = await this.ensureIdleSubagent(agentId);
+    child.config.setModelAliasResolver(() => this.resolveChildModel(parent, context));
     const completion = this.runWithActiveChild(agentId, options, async (runOptions) => {
       try {
         runOptions.signal.throwIfAborted();
@@ -211,7 +233,11 @@ export class SessionSubagentHost {
 
   async runQueued<T>(tasks: readonly QueuedSubagentTask<T>[]): Promise<Array<SubagentResult<T>>> {
     const maxConcurrency = resolveSwarmMaxConcurrency();
-    return new SubagentBatch(this, tasks, { maxConcurrency }).run();
+    const config = this.session.options.config;
+    return new SubagentBatch(this, tasks, {
+      maxConcurrency,
+      fallbackModel: config?.subagentFallbackModel,
+    }).run();
   }
 
   suspended(event: SubagentSuspendedEvent): void {
@@ -380,28 +406,50 @@ export class SessionSubagentHost {
 
   /**
    * Single source of truth for the model a subagent should use.
-   * 3-tier fallback: subagent-specific → parent's model → global default.
-   * Every lifecycle method MUST call this instead of reading parent.config
-   * directly, so future entry points get the correct model automatically.
+   * Uses the pure model-router function with circuit breaker awareness
+   * for deterministic, verifiable routing decisions.
    */
-  private resolveChildModel(parent: Agent): string {
+  private resolveChildModel(parent: Agent, context?: BatchExecutionContext): string {
     const config = this.session.options.config;
-    return (
-      this._runtimeSubagentModel ??   // Tier 0: runtime override
-      config?.subagentModel ??        // Tier 1: config file
-      parent.config.modelAlias ??     // Tier 2: parent's model
-      config?.defaultModel ??         // Tier 3: global default
-      ''
-    );
+
+    // Build snapshot for deterministic routing
+    const snapshot = createRoutingSnapshot({
+      isRateLimited: context?.isRateLimited ?? false,
+      runtimeModel: this._runtimeSubagentModel ?? undefined,
+      configSubagentModel: config?.subagentModel ?? undefined,
+      parentModel: parent.config.modelAlias ?? undefined,
+      defaultModel: config?.defaultModel ?? undefined,
+      fallbackPriority: config?.subagentFallbackModel
+        ? [config.subagentFallbackModel]
+        : undefined,
+      circuitStates: createCircuitSnapshot(this.circuitBreaker),
+      modelProviderMap: this.modelProviderMap,
+    });
+
+    const output = resolveModel(snapshot);
+    return output.selectedModel;
   }
 
   private async configureChild(
     parent: Agent,
     child: Agent,
     profile: ResolvedAgentProfile,
+    context?: BatchExecutionContext,
   ): Promise<void> {
     // A subagent always inherits the parent agent's model.
-    child.config.setModelAliasResolver(() => this.resolveChildModel(parent));
+    child.config.setModelAliasResolver(() => this.resolveChildModel(parent, context));
+
+    // Rate-limit fallback: on 429, force-open circuit and re-resolve model
+    child.setOnRateLimit(async () => {
+      const modelAlias = child.config.modelAlias;
+      const providerId = modelAlias ? this.modelProviderMap.get(modelAlias) : undefined;
+      if (providerId) {
+        this.circuitBreaker.forceOpen(providerId);
+      }
+      // Re-access child.llm → modelAliasResolver re-runs → resolveModel picks fallback
+      return child.llm;
+    });
+
     child.config.update({
       cwd: parent.config.cwd,
       thinkingLevel: parent.config.thinkingLevel,
@@ -409,12 +457,12 @@ export class SessionSubagentHost {
       seed: profile.seed,
     });
 
-    const context = await prepareSystemPromptContext(
+    const promptContext = await prepareSystemPromptContext(
       this.session.systemContextKaos(child.kaos.getcwd()),
       this.session.options.kimiHomeDir,
       { additionalDirs: child.getAdditionalDirs() },
     );
-    child.useProfile(profile, context);
+    child.useProfile(profile, promptContext);
     child.tools.inheritUserTools(parent.tools);
 
     // Sub-agents must not have access to orchestration tools (e.g. AgentSwarm)

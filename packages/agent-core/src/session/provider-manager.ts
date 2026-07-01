@@ -217,6 +217,23 @@ function resolveModelCapabilities(
   };
 }
 
+function normalizeModelIdForProvider(model: string, providerType: string): string {
+  switch (providerType) {
+    case 'openai':
+    case 'openai_responses':
+      if (model.startsWith('openrouter/')) {
+        const normalized = model.slice('openrouter/'.length);
+        if (normalized.includes('/')) return normalized;
+      }
+      return model;
+    case 'anthropic':
+      if (model.startsWith('anthropic/')) return model.slice('anthropic/'.length);
+      return model;
+    default:
+      return model;
+  }
+}
+
 function toKosongProviderConfig(
   provider: ProviderConfig,
   model: string,
@@ -227,6 +244,7 @@ function toKosongProviderConfig(
   promptCacheKey: string | undefined,
   adaptiveThinking: boolean | undefined,
 ): KosongProviderConfig {
+  model = normalizeModelIdForProvider(model, provider.type);
   switch (provider.type) {
     case 'anthropic':
       return {
