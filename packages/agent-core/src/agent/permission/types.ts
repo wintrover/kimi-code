@@ -67,6 +67,8 @@ export interface PermissionData {
 
 export type PermissionDecision = 'approve' | 'deny' | 'ask';
 
+export type PermissionPolicyCategory = 'deny' | 'approve' | 'ask_resource' | 'ask_lifecycle';
+
 export type PermissionReasonValue = string | number | boolean | null;
 
 export type PermissionDecisionReason = Readonly<Record<string, PermissionReasonValue>>;
@@ -101,6 +103,7 @@ export type PermissionPolicyResult =
 
 export interface PermissionPolicy {
   readonly name: string;
+  readonly category: PermissionPolicyCategory;
   evaluate(
     context: PermissionPolicyContext,
   ): PermissionPolicyResult | undefined | Promise<PermissionPolicyResult | undefined>;

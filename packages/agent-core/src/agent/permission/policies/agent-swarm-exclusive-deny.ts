@@ -1,7 +1,9 @@
-import type { PermissionPolicy, PermissionPolicyContext, PermissionPolicyResult } from '../types';
+import type { PermissionPolicyContext, PermissionPolicyResult } from '../types';
+import { BasePermissionPolicy } from '../base-policy';
 
-export class AgentSwarmExclusiveDenyPermissionPolicy implements PermissionPolicy {
+export class AgentSwarmExclusiveDenyPermissionPolicy extends BasePermissionPolicy {
   readonly name = 'agent-swarm-exclusive-deny';
+  readonly category = 'deny' as const;
 
   evaluate(context: PermissionPolicyContext): PermissionPolicyResult | undefined {
     const toolCalls = context.toolCalls;

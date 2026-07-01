@@ -104,7 +104,7 @@ describe('Agent turn flow', () => {
     expect(records).toContainEqual({
       event: 'permission_policy_decision',
       properties: expect.objectContaining({
-        policy_name: 'yolo-mode-approve',
+        policy_name: 'yolo-auto-approve',
         tool_name: 'Bash',
         permission_mode: 'yolo',
         decision: 'approve',
