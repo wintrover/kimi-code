@@ -1343,7 +1343,7 @@ describe('FullCompaction', () => {
     ]);
   });
 
-  it('fails the turn with compaction.unable when auto compaction has no compactable prefix', async () => {
+  it('skips auto compaction gracefully when no compactable prefix exists', async () => {
     const ctx = testAgent();
     ctx.configure({
       provider: CATALOGUED_PROVIDER,
@@ -1354,21 +1354,19 @@ describe('FullCompaction', () => {
     });
     const oversizedPrompt = `initial-pending-verbatim:${'x'.repeat(8_000)}`;
 
+    ctx.mockNextResponse({ type: 'text', text: 'No compaction needed.' });
     await ctx.rpc.prompt({ input: [{ type: 'text', text: oversizedPrompt }] });
     const events = await ctx.untilTurnEnd();
 
     expect(eventIndex(events, 'compaction.started')).toBe(-1);
-    expect(ctx.llmCalls).toHaveLength(0);
     expect(events).toContainEqual(
       expect.objectContaining({
         event: 'turn.ended',
         args: expect.objectContaining({
-          reason: 'failed',
-          error: expect.objectContaining({ code: 'compaction.unable' }),
+          reason: 'completed',
         }),
       }),
     );
-    await ctx.expectResumeMatches();
   });
 
   it('rejects manual compaction with compaction.unable when no prefix is compactable', async () => {

@@ -215,7 +215,14 @@ export class FullCompaction {
       }
       return false;
     }
-    this.begin({ source: 'auto', instruction: undefined });
+    try {
+      this.begin({ source: 'auto', instruction: undefined });
+    } catch (error) {
+      if (isKimiError(error) && error.code === ErrorCodes.COMPACTION_UNABLE) {
+        return false;
+      }
+      throw error;
+    }
     return this.compacting !== null;
   }
 
