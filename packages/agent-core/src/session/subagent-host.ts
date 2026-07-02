@@ -20,6 +20,7 @@ import {
   userCancellationReason,
 } from '../utils/abort';
 import { collectGitContext } from './git-context';
+import { createChildLLM } from './llm-factory';
 import { ProviderCircuitBreaker } from './provider-circuit-breaker';
 import { resolveModel, createCircuitSnapshot, createRoutingSnapshot } from './model-router';
 import type { AgentContext } from '#/config/agent-context';
@@ -151,7 +152,7 @@ export class SessionSubagentHost {
       this.emitSubagentSpawned(parent, id, profile.name, runOptions);
       try {
         await this.configureChild(parent, agent, profile, context);
-        return await this.runPromptTurn(parent, id, agent, profile.name, runOptions);
+        return await this.runPromptTurn(parent, id, agent, profile.name, runOptions, context);
       } catch (error) {
         this.emitSubagentFailed(parent, id, runOptions, error);
         throw error;
@@ -168,11 +169,10 @@ export class SessionSubagentHost {
   async resume(agentId: string, options: RunSubagentOptions, context?: BatchExecutionContext): Promise<SubagentHandle> {
     options.signal.throwIfAborted();
     const { parent, child, profileName } = await this.ensureIdleSubagent(agentId);
-    child.config.setModelAliasResolver(() => this.resolveChildModel(parent, context));
     const completion = this.runWithActiveChild(agentId, options, async (runOptions) => {
       this.emitSubagentSpawned(parent, agentId, profileName, runOptions);
       try {
-        return await this.runPromptTurn(parent, agentId, child, profileName, runOptions);
+        return await this.runPromptTurn(parent, agentId, child, profileName, runOptions, context);
       } catch (error) {
         this.emitSubagentFailed(parent, agentId, runOptions, error);
         throw error;
@@ -184,11 +184,21 @@ export class SessionSubagentHost {
   async retry(agentId: string, options: RunSubagentOptions, context?: BatchExecutionContext): Promise<SubagentHandle> {
     options.signal.throwIfAborted();
     const { parent, child, profileName } = await this.ensureIdleSubagent(agentId);
-    child.config.setModelAliasResolver(() => this.resolveChildModel(parent, context));
     const completion = this.runWithActiveChild(agentId, options, async (runOptions) => {
       try {
         runOptions.signal.throwIfAborted();
         this.emitSubagentStarted(parent, agentId);
+        const { llm, selectedModel } = createChildLLM({
+          parent,
+          child,
+          circuitBreaker: this.circuitBreaker,
+          config: this.session.options.config,
+          runtimeModel: this._runtimeSubagentModel ?? undefined,
+          context,
+          log: child.log,
+        });
+        child.config.update({ modelAlias: selectedModel });
+        child.turn.setLLMForTurn(llm);
         const turnId = child.turn.retry('agent-host');
         if (turnId === null) {
           throw new Error(`Agent instance "${agentId}" could not start a retry turn`);
@@ -198,6 +208,8 @@ export class SessionSubagentHost {
       } catch (error) {
         this.emitSubagentFailed(parent, agentId, runOptions, error);
         throw error;
+      } finally {
+        child.turn.setLLMForTurn(undefined);
       }
     });
     return { agentId, profileName, resumed: true, completion };
@@ -218,8 +230,6 @@ export class SessionSubagentHost {
     if (this.activeChildren.has(agentId) || child.turn.hasActiveTurn) {
       throw new Error(`Agent instance "${agentId}" is already running and cannot run concurrently`);
     }
-
-    child.config.setModelAliasResolver(() => this.resolveChildModel(parent));
 
     const profileName = child.config.profileName ?? 'subagent';
     return { parent, child, profileName };
@@ -337,6 +347,7 @@ export class SessionSubagentHost {
     child: Agent,
     profileName: string,
     options: RunSubagentOptions,
+    context?: BatchExecutionContext,
   ): Promise<SubagentCompletion> {
     options.signal.throwIfAborted();
     await this.triggerSubagentStart(parent, profileName, options.prompt, options.signal);
@@ -348,13 +359,28 @@ export class SessionSubagentHost {
       if (gitContext) childPrompt = `${gitContext}\n\n${childPrompt}`;
     }
 
+    const { llm, selectedModel } = createChildLLM({
+      parent,
+      child,
+      circuitBreaker: this.circuitBreaker,
+      config: this.session.options.config,
+      runtimeModel: this._runtimeSubagentModel ?? undefined,
+      context,
+      log: child.log,
+    });
+    child.config.update({ modelAlias: selectedModel });
+    child.turn.setLLMForTurn(llm);
     this.emitSubagentStarted(parent, childId);
     const turnId = child.turn.prompt([{ type: 'text', text: childPrompt }], SUBAGENT_PROMPT_ORIGIN);
     if (turnId === null) {
       throw new Error(`Agent instance "${childId}" could not start a turn`);
     }
     this.observeFirstRequest(child, options);
-    return this.waitForChildCompletion(parent, childId, child, profileName, options);
+    try {
+      return await this.waitForChildCompletion(parent, childId, child, profileName, options);
+    } finally {
+      child.turn.setLLMForTurn(undefined);
+    }
   }
 
   private async waitForChildCompletion(
@@ -450,27 +476,6 @@ export class SessionSubagentHost {
     profile: ResolvedAgentProfile,
     context?: BatchExecutionContext,
   ): Promise<void> {
-    // A subagent always inherits the parent agent's model.
-    child.config.setModelAliasResolver(() => this.resolveChildModel(parent, context, child));
-
-    // Rate-limit fallback: on 429, force-open circuit and re-resolve model
-    child.setOnRateLimit(async () => {
-      const modelAlias = child.config.modelAlias;
-      let providerId: string | undefined;
-      if (modelAlias && child.modelProvider) {
-        try {
-          providerId = child.modelProvider.resolveProviderConfig(modelAlias).providerName;
-        } catch {
-          // resolve failure (unregistered model etc.) — skip fallback
-        }
-      }
-      if (providerId) {
-        this.circuitBreaker.forceOpen(providerId);
-      }
-      // Re-access child.llm → modelAliasResolver re-runs → resolveModel picks fallback
-      return child.llm;
-    });
-
     child.config.update({
       cwd: parent.config.cwd,
       thinkingLevel: parent.config.thinkingLevel,

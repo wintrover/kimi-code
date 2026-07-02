@@ -23,11 +23,6 @@ export interface ChatWithRetryInput {
   readonly stepUuid: string;
   readonly maxAttempts?: number;
   readonly log?: Logger | undefined;
-  readonly onRateLimitFallback?: ((error: unknown) => Promise<LLM | undefined>) | undefined;
-}
-
-function isRateLimitError(error: unknown): boolean {
-  return maybeStatusCode(error) === 429;
 }
 
 export async function chatWithRetry(input: ChatWithRetryInput): Promise<LLMChatResponse> {
@@ -44,25 +39,12 @@ export async function chatWithRetry(input: ChatWithRetryInput): Promise<LLMChatR
   }
 
   const delays = retryBackoffDelays(maxAttempts);
-  let currentLLM = input.llm;
-  let fallbackUsed = false;
 
   for (let attempt = 1; ; attempt += 1) {
     try {
-      return await currentLLM.chat(paramsForAttempt(input, attempt, maxAttempts));
+      return await input.llm.chat(paramsForAttempt(input, attempt, maxAttempts));
     } catch (error) {
-      // Rate-limit fallback: swap model immediately on first 429
-      if (!fallbackUsed && isRateLimitError(error) && input.onRateLimitFallback) {
-        const newLLM = await input.onRateLimitFallback(error);
-        if (newLLM) {
-          currentLLM = newLLM;
-          fallbackUsed = true;
-          attempt = 0; // will become 1 after loop increment
-          continue;
-        }
-      }
-
-      if (attempt >= maxAttempts || !currentLLM.isRetryableError?.(error)) {
+      if (attempt >= maxAttempts || !input.llm.isRetryableError?.(error)) {
         logRequestFailure(input, error, attempt, maxAttempts);
         throw error;
       }

@@ -40,7 +40,6 @@ export interface RunTurnInput {
   readonly log?: Logger | undefined;
   readonly maxSteps?: number | undefined;
   readonly maxRetryAttempts?: number;
-  readonly onRateLimitFallback?: ((error: unknown) => Promise<LLM | undefined>) | undefined;
   readonly recordStepUsage?:
     | ((usage: TokenUsage) => RecordStepUsageResult | void | Promise<RecordStepUsageResult | void>)
     | undefined;
@@ -59,7 +58,6 @@ export async function runTurn(input: RunTurnInput): Promise<TurnResult> {
     maxSteps,
     maxRetryAttempts,
     recordStepUsage: hostRecordStepUsage,
-    onRateLimitFallback,
   } = input;
   let usage: TokenUsage = emptyUsage();
   let steps = 0;
@@ -95,7 +93,6 @@ export async function runTurn(input: RunTurnInput): Promise<TurnResult> {
         currentStep: steps,
         maxRetryAttempts,
         recordUsage: recordStepUsage,
-        onRateLimitFallback,
       });
       activeStep = undefined;
 

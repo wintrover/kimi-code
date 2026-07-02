@@ -5,7 +5,8 @@ import { ErrorCodes, KimiError, makeErrorPayload } from '#/errors';
 import { log } from '#/logging/logger';
 import type { Logger } from '#/logging/types';
 import type { AgentAPI, AgentEvent, KimiConfig, SDKAgentRPC, UsageStatus } from '#/rpc';
-import { generate } from '@moonshot-ai/kosong';
+import { generate, createProvider, KimiChatProvider, type ChatProvider, type GenerationKwargs } from '@moonshot-ai/kosong';
+import { applyKimiEnvSamplingParams, applyKimiEnvThinkingKeep } from '#/config/kimi-env-params';
 
 import type { EnabledPluginSessionStart } from '#/plugin';
 
@@ -130,7 +131,7 @@ export class Agent {
   readonly replayBuilder: ReplayBuilder;
 
   private additionalDirs: readonly string[];
-  private _onRateLimit?: (error: unknown) => Promise<import('../loop/llm').LLM | undefined>;
+  private readonly _providerCache = new Map<string, ChatProvider>();
 
   constructor(options: AgentOptions) {
     this.type = options.type ?? 'main';
@@ -203,20 +204,6 @@ export class Agent {
     }
   }
 
-  /**
-   * Install (or clear) a rate-limit fallback handler.
-   * When set, the turn loop calls this on 429 errors to obtain a
-   * replacement LLM (e.g., with a fallback model) before retrying.
-   */
-  setOnRateLimit(handler: ((error: unknown) => Promise<import('../loop/llm').LLM | undefined>) | undefined): void {
-    this._onRateLimit = handler;
-  }
-
-  /** Rate-limit fallback handler for the turn loop. */
-  get rateLimitHandler(): ((error: unknown) => Promise<import('../loop/llm').LLM | undefined>) | undefined {
-    return this._onRateLimit;
-  }
-
   get generate(): typeof generate {
     return async (provider, systemPrompt, tools, history, callbacks, options) => {
       const { requestLogFields, generateOptions } = splitGenerateOptions(options);
@@ -261,6 +248,65 @@ export class Agent {
       provider,
       systemPrompt: this.config.systemPrompt,
       capability: this.config.modelCapabilities,
+      generate: this.generate,
+      completionBudgetConfig,
+    });
+  }
+
+  /**
+   * Get or create a ChatProvider for a specific model alias.
+   * Reuses the SDK client (HTTP connection pool) across calls with the same model.
+   * Replicates the provider transforms from ConfigState.provider so the cached
+   * provider carries the same thinking, env sampling params, and profile overrides.
+   */
+  private getOrCreateProvider(modelAlias: string): ChatProvider {
+    const cached = this._providerCache.get(modelAlias);
+    if (cached) return cached;
+
+    const resolved = this.modelProvider!.resolveProviderConfig(modelAlias);
+    let provider = createProvider(resolved.provider);
+    // Only enable thinking for models that support it — matches ConfigState.provider.
+    if (resolved.modelCapabilities.thinking) {
+      provider = provider.withThinking(this.config.thinkingLevel);
+    }
+    // Apply env-level sampling params and thinking keep (matches ConfigState.provider).
+    provider = applyKimiEnvThinkingKeep(
+      applyKimiEnvSamplingParams(provider),
+      this.config.thinkingLevel,
+    );
+    // Apply profile-level sampling params (temperature / seed) inline,
+    // matching ConfigState.applyProfileSamplingParams.
+    if (provider instanceof KimiChatProvider) {
+      const { temperature, seed } = this.config.data();
+      const kwargs: GenerationKwargs = {};
+      if (temperature !== undefined) kwargs.temperature = temperature;
+      if (seed !== undefined) kwargs.extra_body = { seed };
+      if (Object.keys(kwargs).length > 0) {
+        provider = provider.withGenerationKwargs(kwargs);
+      }
+    }
+
+    this._providerCache.set(modelAlias, provider);
+    return provider;
+  }
+
+  /**
+   * Create an immutable LLM for a specific model alias.
+   * Returns a new KosongLLM shell that references a cached provider (shared connection pool).
+   * Bypasses modelAliasResolver — the caller decides the model.
+   */
+  buildLLMForModel(modelAlias: string): KosongLLM {
+    const provider = this.getOrCreateProvider(modelAlias);
+    const resolved = this.modelProvider!.resolveProviderConfig(modelAlias);
+    const loopControl = this.kimiConfig?.loopControl;
+    const completionBudgetConfig = resolveCompletionBudget({
+      maxOutputSize: resolved.maxOutputSize,
+      reservedContextSize: loopControl?.reservedContextSize,
+    });
+    return new KosongLLM({
+      provider,
+      systemPrompt: this.config.systemPrompt,
+      capability: resolved.modelCapabilities,
       generate: this.generate,
       completionBudgetConfig,
     });
